@@ -50,7 +50,7 @@ class ResWACNN(CompressionModel):
         )
 
 
-        self.h_a_residual = nn.Sequential(
+        self.h_a_res = nn.Sequential(
             conv(M, N, stride=1, kernel_size=3),
             nn.ReLU(inplace=True),
             conv(N, N),
@@ -297,13 +297,13 @@ class ResWACNN(CompressionModel):
 class ResWACNN2018(CompressionModel):
     "evolution of the previous one, but with oldest entropy estimation"
 
-    def __init__(self, N=192, M=320,mask_policy = "block-wise", scalable_levels = 10, **kwargs):
+    def __init__(self, N=192, M=320,mask_policy = "block-wise", scalable_levels = 5, **kwargs):
         super().__init__(N = N, M = M,mask_policy = mask_policy, **kwargs)
 
 
         #definire 
         self.scalable_levels = scalable_levels 
-        self.percentages = [0,2,4,6,8,10]
+        self.percentages = list(range(0,10,10//scalable_levels))
         assert self.M %self.scalable_levels == 0
         self.entropy_bottleneck_residual = EntropyBottleneck(self.N)
 
@@ -322,6 +322,28 @@ class ResWACNN2018(CompressionModel):
             nn.LeakyReLU(inplace=True),
             conv(self.M * 3 // 2, self.M * 2, stride=1, kernel_size=3),
         )
+
+
+
+    def print_information(self):
+        print(" g_a: ",sum(p.numel() for p in self.g_a.parameters()))
+        print(" g_a_residual: ",sum(p.numel() for p in self.g_a_residual.parameters()))
+        print(" h_a: ",sum(p.numel() for p in self.h_a.parameters()))
+        print(" h_means_a: ",sum(p.numel() for p in self.h_mean_s.parameters()))
+        print(" h_scale_a: ",sum(p.numel() for p in self.h_scale_s.parameters()))
+        print(" h_a_res: ",sum(p.numel() for p in self.h_a_res.parameters()))
+        print(" h_s_res: ",sum(p.numel() for p in self.h_s_res.parameters()))
+
+        print("cc_mean_transforms",sum(p.numel() for p in self.cc_mean_transforms.parameters()))
+        print("cc_scale_transforms",sum(p.numel() for p in self.cc_scale_transforms.parameters()))
+        print("cc_scale_transforms",sum(p.numel() for p in self.lrp_transforms.parameters()))
+
+        print("**************************************************************************")
+        model_tr_parameters = sum(p.numel() for p in self.parameters() if p.requires_grad)
+        model_fr_parameters = sum(p.numel() for p in self.parameters() if p.requires_grad== False)
+        print(" trainable parameters: ",model_tr_parameters)
+        print(" freeze parameterss: ", model_fr_parameters)
+
 
 
     def forward(self, x):
@@ -457,6 +479,123 @@ class ResWACNN2018(CompressionModel):
                        "res":y_hat_residual}
         }
     
+
+
+    def forward_test(self,x,scale_p):
+
+        assert scale_p < len(self.percentages)
+
+        p = self.percentages[scale_p]
+
+        y_base= self.split_ga(x)
+        y = self.split_ga(y_base,begin = False)
+
+        #residual latent representation 
+        y_residual_input = self.concatenate(y_base,x)
+        y_residual = self.g_a_residual(y_residual_input)
+
+
+        y_shape = y.shape[2:]
+
+    
+        # hyperprior for main layer 
+        z = self.h_a(y)
+        _, z_likelihoods = self.entropy_bottleneck(z)
+
+        z_offset = self.entropy_bottleneck._get_medians()
+        z_tmp = z - z_offset
+        z_hat = ste_round(z_tmp) + z_offset
+
+        #overall latent scales and means for the main latent representation
+        latent_scales = self.h_scale_s(z_hat)
+        latent_means = self.h_mean_s(z_hat)
+
+
+        # hyperprior for residual 
+        z_res =self.h_a_res(y_residual)
+        _, z_likelihoods_res = self.entropy_bottleneck_residual(z_res) 
+
+        z_offset_res = self.entropy_bottleneck_residual._get_medians()
+        z_tmp = z_res - z_offset_res
+        z_hat_res = ste_round(z_tmp) + z_offset_res 
+
+        
+
+        gaussian_params = self.h_s_res(z_hat_res)
+        scales_hat_res, means_hat_res = gaussian_params.chunk(2, 1)
+
+
+        #y_hat_residual_across_percentages = []
+        #y_likelihoods_res_across_percentages = []
+
+        
+        mask = self.masking(y.shape,p = p, latent_scales =  None)  # determina la maschera
+        y_hat_residual, y_likelihoods_residual = self.gaussian_conditional(y_residual*mask, 
+                                                                                scales_hat_res*mask,
+                                                                                means= means_hat_res*mask) 
+
+        
+
+        y_slices = y.chunk(self.num_slices, 1)
+        y_residual_slices = y_hat_residual.chuck(self.num_slices,1)        
+        y_hat_slices = []
+        y_likelihood_slices = []
+
+
+
+        for slice_index, y_slice in enumerate(y_slices):
+
+
+            y_slice_residual = y_residual_slices[slice_index]
+
+            support_slices = (y_hat_slices if self.max_support_slices < 0 else y_hat_slices[:self.max_support_slices])
+
+
+
+            mean_support = torch.cat([latent_means] + support_slices, dim=1)
+            mu = self.cc_mean_transforms[slice_index](mean_support)
+            mu = mu[:, :, :y_shape[0], :y_shape[1]]
+
+            scale_support = torch.cat([latent_scales] + support_slices, dim=1)
+            scale = self.cc_scale_transforms[slice_index](scale_support)
+            scale = scale[:, :, :y_shape[0], :y_shape[1]]
+
+            _, y_slice_likelihood = self.gaussian_conditional(y_slice, scale, mu)
+            y_likelihood_slices.append(y_slice_likelihood)
+
+
+            #quantize the entire 
+            y_hat_slice_zero_residual= ste_round(y_slice - mu) + mu
+                
+            y_hat_slice = y_hat_slice_zero_residual + y_slice_residual # add the residual!
+
+
+            lrp_support = torch.cat([mean_support, y_hat_slice], dim=1)
+            lrp = self.lrp_transforms[slice_index](lrp_support)
+            lrp = 0.5 * torch.tanh(lrp)
+            y_hat_slice += lrp
+
+            y_hat_slices.append(y_hat_slice)
+            
+        y_hat = torch.cat(y_hat_slices,dim = 1) 
+        y_likelihood = torch.cat(y_likelihood_slices,dim = 1) 
+
+
+        x_hat = self.g_s(y_hat)
+
+
+
+
+        return {
+            "x_hat": x_hat,
+            "likelihoods": {"y": y_likelihood,
+                             "r":y_likelihoods_residual},
+            "likelihoods_hyperprior":{"z": z_likelihoods,
+                                       "z_res":z_likelihoods_res},
+            "latent": {"y_hat":y_hat,
+                       "res":y_hat_residual}
+        }
+           
 
 
     def compress(self, x, p = 0.0):

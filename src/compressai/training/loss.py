@@ -26,11 +26,13 @@ class RateDistortionLoss(nn.Module):
 
 class ScalableRateDistortionLoss(nn.Module):
 
-    def __init__(self, weight, lmbda_starter = 0.75):
+    def __init__(self, weight, lmbda_starter = 0.75, num_levels = 5):
         super().__init__()
         self.mse = nn.MSELoss()
+        self.num_levels = num_levels
         self.lmbda_starter = lmbda_starter
-        self.lmbda = [self.lmbda_starter*2**(5 - i) for i in range(5)]
+        self.lmbda = [self.lmbda_starter*2**(self.num_levels - i) for i in range(5)]
+        print("******************  --->",self.lmbda)
         self.scales_tensor = torch.tensor(self.lmbda).view(-1, 1, 1, 1) # (5, 1, 1, 1)
         self.weight = weight
 
@@ -46,7 +48,7 @@ class ScalableRateDistortionLoss(nn.Module):
 
 
         # Check the batch sizes of images and recon_images
-        batch_size_images = output["x_hat"].shape[0]
+        batch_size_images = output["x_hat"].shape[0] # N * num_levels
         batch_size_recon =  N
 
         # If the batch sizes of images and recon_images are different, adjust the batch size

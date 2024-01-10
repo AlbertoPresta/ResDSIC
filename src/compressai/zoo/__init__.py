@@ -13,11 +13,12 @@
 # limitations under the License.
 
 
-from compressai.models import SymmetricalTransFormer, WACNN
+from compressai.models import SymmetricalTransFormer, WACNN, ResWACNN2018
 
 from .pretrained import load_pretrained as load_state_dict
 
 models = {
     'stf': SymmetricalTransFormer,
     'cnn': WACNN,
+    'resWacnn18':ResWACNN2018
 }
