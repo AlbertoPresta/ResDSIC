@@ -29,14 +29,14 @@ class WACNN(CompressionModel):
         self.max_support_slices = 5
 
         self.g_a = nn.Sequential(
-            conv(3, N, kernel_size=5, stride=2),
+            conv(3, N, kernel_size=5, stride=2), # halve 128
             GDN(N),
-            conv(N, N, kernel_size=5, stride=2),
+            conv(N, N, kernel_size=5, stride=2), # halve 64
             GDN(N),
-            Win_noShift_Attention(dim=N, num_heads=8, window_size=8, shift_size=4),
-            conv(N, N, kernel_size=5, stride=2),
+            Win_noShift_Attention(dim=N, num_heads=8, window_size=8, shift_size=4), # 
+            conv(N, N, kernel_size=5, stride=2), #32 
             GDN(N),
-            conv(N, M, kernel_size=5, stride=2),
+            conv(N, M, kernel_size=5, stride=2), # 16
             Win_noShift_Attention(dim=M, num_heads=8, window_size=4, shift_size=2),
         )
         self.g_s = nn.Sequential(
@@ -153,6 +153,8 @@ class WACNN(CompressionModel):
 
         latent_scales = self.h_scale_s(z_hat)
         latent_means = self.h_mean_s(z_hat)
+
+        
 
         y_slices = y.chunk(self.num_slices, 1)
         y_hat_slices = []
