@@ -1,6 +1,6 @@
 import torch 
 import wandb
-from utils.functions import AverageMeter
+from compress.utils.functions import AverageMeter
 import math 
 from pytorch_msssim import ms_ssim
 
@@ -69,6 +69,8 @@ def train_one_epoch(model, criterion, train_dataloader, optimizer, aux_optimizer
         aux_loss.backward()
         aux_optimizer.step()
 
+
+
         if i % 1000 == 0:
             print(
                 f"Train epoch {epoch}: ["
@@ -129,15 +131,17 @@ def test_epoch(epoch, test_dataloader, model, criterion,scale_p, valid = True):
             if valid is False:
                 out_net = model.forward_test(d,scale_p)
                 out_criterion = criterion_test(out_net, d)
+                psnr_im = compute_psnr(d, out_net["x_hat"])
             else:
                 out_net = model(d)
                 out_criterion = criterion(out_net, d)
 
-            psnr_im = compute_psnr(d, out_net["x_hat"])
+                psnr_im = compute_psnr(d.repeat(criterion.scalable_levels,1,1,1).to(d.device), out_net["x_hat"])
 
 
             bpp_loss.update(out_criterion["bpp_loss"])
-            loss.update(out_criterion["loss"])
+            if valid is True:
+                loss.update(out_criterion["loss"])
             mse_loss.update(out_criterion["mse_loss"])
             psnr.update(psnr_im)
 
@@ -156,7 +160,6 @@ def test_epoch(epoch, test_dataloader, model, criterion,scale_p, valid = True):
 
         log_dict = {
             "test_" + name :epoch,
-            "test_" + name + "/loss_": loss.avg,
             "test_" + name + "/bpp_":bpp_loss.avg,
             "test_" + name + "/mse_": mse_loss.avg,
             "test_" + name + "/psnr_":psnr.avg,

@@ -26,9 +26,7 @@ def parse_args(argv):
         choices=models.keys(),
         help="Model architecture (default: %(default)s)",
     )
-    parser.add_argument(
-        "-d", "--dataset", type=str, required=True, help="Training dataset"
-    )
+    parser.add_argument("-d", "--dataset", type=str, default = "/scratch/dataset/openimages", help="Training dataset")
     parser.add_argument(
         "-e",
         "--epochs",
@@ -47,14 +45,14 @@ def parse_args(argv):
         "-n",
         "--num-workers",
         type=int,
-        default=30,
+        default=8,
         help="Dataloaders threads (default: %(default)s)",
     )
     parser.add_argument(
         "--lambda_starter",
         dest="lmbda_starter",
         type=float,
-        default=0.075,
+        default=0.05,
         help="Bit-rate distortion parameter (default: %(default)s)",
     )
     parser.add_argument(
@@ -62,8 +60,14 @@ def parse_args(argv):
     )
 
     parser.add_argument(
+        "--scalable_levels", type=int, default=3, help="Batch size (default: %(default)s)"
+    )
+
+    parser.add_argument(
         "--num_images", type=int, default=1024, help="Batch size (default: %(default)s)"
     )
+
+
 
     parser.add_argument(
         "--num_images_val", type=int, default=816, help="Batch size (default: %(default)s)"

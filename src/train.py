@@ -17,16 +17,17 @@ import math
 import random
 import shutil
 import sys
-from compressai.utils.functions import parse_args
+from compress.utils.functions import parse_args
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from  compressai.training import train_one_epoch, test_epoch
+from   compress.training.step import train_one_epoch, test_epoch
 from torch.utils.data import DataLoader
 from torchvision import transforms
-from compressai.training.loss import ScalableRateDistortionLoss, RateDistortionLoss
-from compressai.datasets import ImageFolder, TestKodakDataset
-from compressai.zoo import models
+from compress.training.loss import ScalableRateDistortionLoss, RateDistortionLoss
+from compress.datasets.utils import ImageFolder, TestKodakDataset
+from compress.zoo import models
+
 
 
 
@@ -120,7 +121,7 @@ def main(argv):
     valid_dataset = ImageFolder(args.dataset, split="test", transform=train_transforms, num_images=args.num_images_val)
     test_dataset = TestKodakDataset(data_dir="/scratch/dataset/kodak", transform= test_transforms)
 
-    device = "cuda" if args.cuda and torch.cuda.is_available() else "cpu"
+    device = "cuda" #if args.cuda and torch.cuda.is_available() else "cpu"
 
     train_dataloader = DataLoader(
         train_dataset,
@@ -146,7 +147,7 @@ def main(argv):
 
 
 
-    net = models[args.model](N = args.N, M = args.M, scalable_levels = args.scalable_levels, mask_policy = args.mask_policy)
+    net = models[args.model]( scalable_levels = args.scalable_levels, mask_policy = args.mask_policy)
     net = net.to(device)
 
     if args.cuda and torch.cuda.device_count() > 1:
@@ -154,7 +155,7 @@ def main(argv):
 
     optimizer, aux_optimizer = configure_optimizers(net, args)
     lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, "min", factor=0.3, patience=4)
-    criterion = ScalableRateDistortionLoss(lmbda_starter=args.lmbda, num_levels=5)
+    criterion = ScalableRateDistortionLoss(lmbda_starter=args.lmbda_starter, scalable_levels=args.scalable_levels)
 
     last_epoch = 0
     if args.checkpoint:  # load from previous checkpoint
@@ -183,10 +184,11 @@ def main(argv):
             counter
            
         )
-        loss = test_epoch(epoch, valid_dataloader, net, criterion, valid = True)
+        
+        loss = test_epoch(epoch, valid_dataloader, net, criterion,scale_p = 0, valid = True)
         lr_scheduler.step(loss)
 
-        loss = test_epoch(epoch, test_dataloader, net, criterion, valid = False)
+        loss = test_epoch(epoch, test_dataloader, net, criterion, scale_p = 0,valid = False)
         lr_scheduler.step(loss)
 
         is_best = loss < best_loss
@@ -209,5 +211,5 @@ def main(argv):
 
 if __name__ == "__main__":
     #Enhanced-imagecompression-adapter-sketch
-    wandb.init(project="MDDSIC_synthetic", entity="albertopresta")   
+    wandb.init(project="prova", entity="albertopresta")   
     main(sys.argv[1:])

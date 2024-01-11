@@ -6,8 +6,8 @@ from compressai.ans import BufferedRansEncoder, RansDecoder
 from compressai.entropy_models import EntropyBottleneck, GaussianConditional
 from compressai.layers import GDN
 from .utils import conv, deconv, update_registered_buffers
-from compressai.ops import ste_round
-from compressai.layers import conv3x3, subpel_conv3x3, Win_noShift_Attention
+from compress.ops import ste_round
+from compress.layers import conv3x3, subpel_conv3x3, Win_noShift_Attention
 from .base import CompressionModel
 
 # From Balle's tensorflow compression examples
