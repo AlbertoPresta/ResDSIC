@@ -60,11 +60,11 @@ def parse_args(argv):
     )
 
     parser.add_argument(
-        "--scalable_levels", type=int, default=3, help="Batch size (default: %(default)s)"
+        "--scalable_levels", type=int, default=4, help="Batch size (default: %(default)s)"
     )
 
     parser.add_argument(
-        "--num_images", type=int, default=1024, help="Batch size (default: %(default)s)"
+        "--num_images", type=int, default=16000, help="Batch size (default: %(default)s)"
     )
 
 
@@ -73,7 +73,7 @@ def parse_args(argv):
         "--num_images_val", type=int, default=816, help="Batch size (default: %(default)s)"
     )
     parser.add_argument(
-        "--mask_policy", type=str, default="block-wise", help="Batch size (default: %(default)s)"
+        "--mask_policy", type=str, default="learnable-mask", help="Batch size (default: %(default)s)"
     )
     parser.add_argument(
         "--valid_batch_size",

@@ -2,12 +2,12 @@ import math
 import torch
 import torch.nn as nn
 
-from compressai.ans import BufferedRansEncoder, RansDecoder
-from compressai.entropy_models import EntropyBottleneck, GaussianConditional
-from compressai.layers import GDN
+from compress.ans import BufferedRansEncoder, RansDecoder
+from compress.entropy_models import EntropyBottleneck, GaussianConditional
+from compress.layers import GDN
 from .utils import conv, deconv, update_registered_buffers
-from compressai.ops import ste_round
-from compressai.layers import conv3x3, subpel_conv3x3, Win_noShift_Attention
+from compress.ops import ste_round
+from compress.layers import conv3x3, subpel_conv3x3, Win_noShift_Attention
 from .base import CompressionModel
 from .cnn import WACNN
 # From Balle's tensorflow compression examples
@@ -20,7 +20,7 @@ def get_scale_table(min=SCALES_MIN, max=SCALES_MAX, levels=SCALES_LEVELS):
     return torch.exp(torch.linspace(math.log(min), math.log(max), levels))
 
 
-class ResWACNN(CompressionModel):
+class ResWACNN(WACNN):
     """CNN based model"""
 
     def __init__(self, N=192, M=320,mask_policy = "block-wise",  **kwargs):
@@ -65,28 +65,44 @@ class ResWACNN(CompressionModel):
         if begin:
             layers_intermedi = list(self.g_a.children())[:self.level + 1]
         else:
-            layers_intermedi = list(self.g_a.children())[self.level:]
+            layers_intermedi = list(self.g_a.children())[self.level + 1:]
         modello_intermedio = nn.Sequential(*layers_intermedi)
         return modello_intermedio(x)
 
 
-    def concatenate(self, y_base, x): 
+    def concatenate(self, y_base, x):
         bs,c,w,h = y_base.shape 
         y_base = y_base.reshape(bs,c//self.factor, w*self.halve, h*self.halve).to(x.device)
         res = torch.cat([y_base,x],dim = 1).to(x.device)
         return res 
 
-    def masking(self,shapes, p = 0):
+    def masking(self,scale, p = 0, device = torch.device("cuda")):
+        shapes = scale.shape
         if self.mask_policy == "block-wise":
             res = []
+            y_res = torch.zeros(shapes).to(device)
             y_res= y_res.chunk(self.num_slices, 1)
             for slice_index, y_slice in enumerate(y_res):
-                if slice_index < p :
-                    c = torch.zeros(shapes).to(y_slice.device) + 1.0
-                    res.append(c)
+                if slice_index < self.percentages[p] :
+                    y_slice +=  1.0
+                    res.append(y_slice)
                 else:
-                    res.append(torch.zeros(shapes).to(y_slice.device))
-            return torch.cat(res,dim = 1)
+                    res.append(y_slice)
+            return torch.cat(res,dim = 1).to(device)
+        elif self.mask_policy == "learnable-mask":
+            importance_map =  self.mask_conv(scale)
+            importance_map = torch.clip(importance_map + 0.5, 0, 1)
+            gamma = torch.sum(torch.stack([self.gamma[j] for j in range(p + 1)]),dim = 0)
+            gamma = gamma[None, :, None, None]
+            
+            adjusted_importance_map = importance_map*gamma
+            self.gamma[0,:].data *= 0.0 # self.gamma[0,:].data*0.0
+            self.gamma.data = torch.relu(self.gamma.data) 
+            #self.gamma.data, _ = torch.sort(self.gamma.data)
+            #self.gamma.data[0][None,:,None,None] = 0.0
+            
+
+        
         else:
             raise NotImplementedError()
         
@@ -130,8 +146,8 @@ class ResWACNN(CompressionModel):
 
 
         mask = self.masking(y_residual,
-                             p = p, 
-                            latent_scales = latent_scales if self.mask_policy == "scales-group" else None)  # determina la maschera
+                             p = p 
+                            )  # determina la maschera
         
         latent_scales_residual = self.h_scale_s(z_hat)
         latent_means_residual = self.h_mean_s(z_hat)
@@ -232,7 +248,7 @@ class ResWACNN(CompressionModel):
         y_residual_input = self.concatenate(y_base,x)
         y_residual = self.g_a_residual(y_residual_input)
 
-        y_residual = self.masking(y_residual, p = p, latent_means = None)
+        y_residual = self.masking(y_residual, p = p)
         y = y + y_residual # maschero per ora qua, poi ci pensiamo
 
         y_shape = y.shape[2:]
@@ -294,17 +310,17 @@ class ResWACNN(CompressionModel):
 
 
 
-class ResWACNN2018(CompressionModel):
+class ResWACNN2018(ResWACNN):
     "evolution of the previous one, but with oldest entropy estimation"
 
-    def __init__(self, N=192, M=320,mask_policy = "block-wise", scalable_levels = 5, **kwargs):
+    def __init__(self, N=192, M=320,mask_policy = "block-wise", scalable_levels = 4, **kwargs):
         super().__init__(N = N, M = M,mask_policy = mask_policy, **kwargs)
 
 
         #definire 
-        self.scalable_levels = scalable_levels 
-        self.percentages = list(range(0,10,10//scalable_levels))
-        assert self.M %self.scalable_levels == 0
+        self.scalable_levels = scalable_levels  
+        self.percentages = [0,5,10]#list(range(0,10,10//self.scalable_levels))
+        print(self.percentages,"<------")
         self.entropy_bottleneck_residual = EntropyBottleneck(self.N)
 
         self.h_a_res = nn.Sequential(
@@ -324,6 +340,15 @@ class ResWACNN2018(CompressionModel):
         )
 
 
+        if self.mask_policy == "learnable-mask":
+            self.gamma = torch.nn.Parameter(torch.ones((self.scalable_levels, 320)))
+            self.gamma[0,:].data *= 0.0
+            
+            self.mask_conv = nn.Sequential(torch.nn.Conv2d(in_channels=self.M, out_channels=self.M, kernel_size=1, stride=1),)
+           
+
+
+
 
     def print_information(self):
         print(" g_a: ",sum(p.numel() for p in self.g_a.parameters()))
@@ -338,6 +363,10 @@ class ResWACNN2018(CompressionModel):
         print("cc_scale_transforms",sum(p.numel() for p in self.cc_scale_transforms.parameters()))
         print("cc_scale_transforms",sum(p.numel() for p in self.lrp_transforms.parameters()))
 
+        if self.mask_policy== "learnable-mask":
+            print("mask conv",sum(p.numel() for p in self.mask_conv.parameters()))
+           
+
         print("**************************************************************************")
         model_tr_parameters = sum(p.numel() for p in self.parameters() if p.requires_grad)
         model_fr_parameters = sum(p.numel() for p in self.parameters() if p.requires_grad== False)
@@ -346,15 +375,21 @@ class ResWACNN2018(CompressionModel):
 
 
 
+
+
     def forward(self, x):
 
         y_base= self.split_ga(x)
         y = self.split_ga(y_base,begin = False)
 
+
         #residual latent representation 
-        y_residual_input = self.concatenate(y_base,x)
+        y_residual_input = self.concatenate(y_base,x).to(y_base.device)
         y_residual = self.g_a_residual(y_residual_input)
 
+        y_residual = y_residual.to(x.device)
+
+ 
 
         y_shape = y.shape[2:]
 
@@ -384,19 +419,25 @@ class ResWACNN2018(CompressionModel):
 
         gaussian_params = self.h_s_res(z_hat_res)
         scales_hat_res, means_hat_res = gaussian_params.chunk(2, 1)
+        #scales_hat_res = scales_hat_res.to(y.device)
+        #means_hat_res = scales_hat_res.to(y.device)
+
 
 
         y_hat_residual_across_percentages = []
         y_likelihoods_res_across_percentages = []
 
-        for p in self.percentages:
-            mask = self.masking(y.shape,p = p, latent_scales =  None)  # determina la maschera
-            
-            y_hat_residual, y_likelihoods_residual = self.gaussian_conditional(y_residual*mask, 
-                                                                                scales_hat_res*mask,
-                                                                                means= means_hat_res*mask) 
-            y_hat_residual_across_percentages.append(y_hat_residual) 
-            y_likelihoods_res_across_percentages.append(y_likelihoods_residual)
+        #for p in self.percentages:
+            #print("*********** ",p," *******************")
+        #    mask = self.masking(y.shape,p = p)  # determina la maschera
+            #print("mask shape",mask.device)
+            #print("y_residual: ",y_residual.device)
+            #print("y: ",y.shape)
+        #    y_hat_residual, y_likelihoods_residual = self.gaussian_conditional(y_residual*mask, 
+                                                                           #     scales_hat_res*mask,
+                                                                           #     means= means_hat_res*mask) 
+        #    y_hat_residual_across_percentages.append(y_hat_residual) 
+        #    y_likelihoods_res_across_percentages.append(y_likelihoods_residual)
 
         
 
@@ -405,7 +446,29 @@ class ResWACNN2018(CompressionModel):
         y_hat_scalable = []
         y_likelihood_scalable = []
 
-        for i,p in enumerate(self.percentages):
+        for i in range(len((self.percentages))):
+
+
+            mask = self.masking(scales_hat_res,p = i)  # determina la maschera
+
+
+            if self.mask_policy == "learnable-mask":
+                if self.training:
+                    mask = mask + (torch.rand_like(mask) - 0.5)
+                    mask = mask + mask.round().detach() - mask.detach()  # Differentiable torch.round()
+                else:
+                    mask = torch.round(mask)
+
+
+
+            y_hat_residual, y_likelihoods_residual = self.gaussian_conditional(y_residual*mask, 
+                                                                                scales_hat_res*mask,
+                                                                                means= means_hat_res*mask) 
+
+
+            y_hat_residual_across_percentages.append(y_hat_residual) 
+            y_likelihoods_res_across_percentages.append(y_likelihoods_residual)
+
             y_residual_p = y_hat_residual_across_percentages[i]
             y_residual_slices = y_residual_p.chunk(self.num_slices,1)
 
@@ -470,7 +533,7 @@ class ResWACNN2018(CompressionModel):
 
 
         return {
-            "x_hat": x_hat,
+            "x_hat": x_hat_scalable,
             "likelihoods": {"y": y_likelihood_scalable,
                              "r":y_likelihoods_res_across_percentages},
             "likelihoods_hyperprior":{"z": z_likelihoods,
@@ -485,7 +548,7 @@ class ResWACNN2018(CompressionModel):
 
         assert scale_p < len(self.percentages)
 
-        p = self.percentages[scale_p]
+        #p = self.percentages[scale_p]
 
         y_base= self.split_ga(x)
         y = self.split_ga(y_base,begin = False)
@@ -529,7 +592,10 @@ class ResWACNN2018(CompressionModel):
         #y_likelihoods_res_across_percentages = []
 
         
-        mask = self.masking(y.shape,p = p, latent_scales =  None)  # determina la maschera
+        mask = self.masking(scales_hat_res,p = scale_p)  # determina la maschera
+
+        if self.mask_policy == "learnable-mask":
+            mask = torch.round(mask)
         y_hat_residual, y_likelihoods_residual = self.gaussian_conditional(y_residual*mask, 
                                                                                 scales_hat_res*mask,
                                                                                 means= means_hat_res*mask) 
@@ -537,7 +603,7 @@ class ResWACNN2018(CompressionModel):
         
 
         y_slices = y.chunk(self.num_slices, 1)
-        y_residual_slices = y_hat_residual.chuck(self.num_slices,1)        
+        y_residual_slices = y_hat_residual.chunk(self.num_slices,1)        
         y_hat_slices = []
         y_likelihood_slices = []
 
@@ -598,10 +664,10 @@ class ResWACNN2018(CompressionModel):
            
 
 
-    def compress(self, x, p = 0.0):
+    def compress(self, x, p = 0):
 
 
-        assert p in self.percentages 
+        assert p < len(self.percentages) 
 
         y_base= self.split_ga(x)
         y = self.split_ga(y_base,begin = False)
@@ -628,7 +694,10 @@ class ResWACNN2018(CompressionModel):
 
         gaussian_params = self.h_s_res(z_hat_res)
         scales_hat, means_hat = gaussian_params.chunk(2, 1)
-        mask = self.masking(y_shape, p = p, latent_scales = None)  # determina la maschera
+        mask = self.masking(scales_hat, p = p)  # determina la maschera
+
+        if self.masking == "learnable-mask":
+            mask = torch.round(mask)
         
 
         indexes = self.gaussian_conditional.build_indexes(scales_hat*mask)
@@ -639,7 +708,7 @@ class ResWACNN2018(CompressionModel):
 
 
         y_slices = y.chunk(self.num_slices, 1)
-        y_res_slice = y_hat_residual.chuck(self.num_slices, 1)
+        y_res_slice = y_hat_residual.chunck(self.num_slices, 1)
         y_hat_slices = []
         y_scales = []
         y_means = []
@@ -694,7 +763,7 @@ class ResWACNN2018(CompressionModel):
 
 
     def decompress(self, strings, shape,p):
-        assert p in self.percentages
+        assert p < len(self.percentages)
         z_hat = self.entropy_bottleneck.decompress(strings[1], shape[0])
         latent_scales = self.h_scale_s(z_hat)
         latent_means = self.h_mean_s(z_hat)
@@ -704,7 +773,10 @@ class ResWACNN2018(CompressionModel):
         gaussian_params = self.h_s_res(z_hat_res)
         scales_hat, means_hat = gaussian_params.chunk(2, 1) 
 
-        mask = self.masking(y_shape,p = p, latent_scales = None)
+        mask = self.masking(scales_hat,p = p)
+
+        if self.masking == "learnable-mask":
+            mask = torch.round(mask)
 
         indexes = self.gaussian_conditional.build_indexes(scales_hat*mask)
         y_hat_residual = self.gaussian_conditional.decompress(strings[2], indexes, means=means_hat)
