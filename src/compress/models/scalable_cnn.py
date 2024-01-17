@@ -184,21 +184,18 @@ class ResWACNN(WACNN):
 
         for j,p in enumerate(list_quality): 
             mask = self.extract_mask(latent_scales,quality = p)
-            if self.mask_policy == "learnable-mask":
+            if self.mask_policy == "learnable-mask" and self.lmbda_index_list[p]!=0:
                 # Create a relaxed mask for quantization
                 samples = mask + (torch.rand_like(mask) - 0.5)
-                mask = samples + samples.round().detach() - samples.detach()  # Differentiable torch.round()
-
- 
-            
+                mask = samples + samples.round().detach() - samples.detach()  # Differentiable torch.round()           
             
             y_prog_q_zero = y_progressive - means_prog 
             y_prog_q= mask*y_prog_q_zero 
 
 
-            _,y_prog_q_likelihood = self.gaussian_conditional(y_prog_q, scale*mask) 
+            _,y_prog_q_likelihood = self.gaussian_conditional(y_prog_q, scales_prog*mask) 
 
-            y_likelihoods_progressive.append(y_prog_q_likelihood)
+            y_likelihoods_progressive.append(y_prog_q_likelihood.unsqueeze(0))
 
             y_prog_q = ste_round(y_prog_q) + means_prog 
 
@@ -212,8 +209,6 @@ class ResWACNN(WACNN):
                 y_hat_prog_slice = y_prog_q_slices[slice_index]
                 support_slices = (y_hat_slices if self.max_support_slices < 0 else y_hat_slices[:self.max_support_slices])
                 
-
-
                 # encode the main latent representation 
                 mean_support = torch.cat([latent_means] + support_slices, dim=1)
                 mu = self.cc_mean_transforms[slice_index](mean_support)
@@ -243,115 +238,19 @@ class ResWACNN(WACNN):
 
             y_hat_q = torch.cat(y_hat_slices_scalable,dim = 1) #questo va preso 
 
-
             x_hat_q = self.g_s(y_hat_q) 
 
-            x_hat_progressive.append(x_hat_q)
-        
+            x_hat_progressive.append(x_hat_q.unsqueeze(0))       
 
-        x_hat_progressive = torch.cat(x_hat_progressive.unsqueeze(0),dim = 0) #num_scalable, BS,3,W,H
-        
+        x_hat_progressive = torch.cat(x_hat_progressive,dim = 0) #num_scalable, BS,3,W,H 
         y_likelihoods = torch.cat(y_likelihood_main, dim = 0) # BS,3,W,H solo per base 
+        y_likelihoods_prog = torch.cat(y_likelihoods_progressive,dim = 0)
          
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-        y_slices = y.chunk(self.num_slices, 1)
-        y_residual_slices = y_residual.chunk(self.num_slices,1)
-        mask_slices =  mask.chunk(self.num_slices,1)
-
-        y_hat_slices = []
-        y_hat_slices_zero_residual = []
-        y_hat_slices_residual = []
-        y_likelihood = []
-        y_likelihood_residual = []
-
-        for slice_index, y_slice in enumerate(y_slices):
-
-
-            mask_slice = mask_slices[slice_index]
-            y_slice_residual = y_residual_slices[slice_index]
-            support_slices = (y_hat_slices if self.max_support_slices < 0 else y_hat_slices[:self.max_support_slices])
-
-
-
-            mean_support = torch.cat([latent_means] + support_slices, dim=1)
-            mu = self.cc_mean_transforms[slice_index](mean_support)
-            mu = mu[:, :, :y_shape[0], :y_shape[1]]
-
-            scale_support = torch.cat([latent_scales] + support_slices, dim=1)
-            scale = self.cc_scale_transforms[slice_index](scale_support)
-            scale = scale[:, :, :y_shape[0], :y_shape[1]]
-
-
-            # parte dedicata al residuo 
-            mean_support_res = torch.cat([latent_means_residual] + support_slices, dim=1)
-            mu_res = self.cc_mean_transforms[slice_index](mean_support_res)
-            mu_res = mu_res[:, :, :y_shape[0], :y_shape[1]]
-
-            scale_support_res = torch.cat([latent_scales_residual] + support_slices, dim=1)
-            scale_res = self.cc_scale_transforms[slice_index](scale_support_res)
-            scale_res = scale_res[:, :, :y_shape[0], :y_shape[1]]
-
-
-
-            _, y_slice_likelihood = self.gaussian_conditional(y_slice, scale, mu)
-            _, y_slice_likelihood_residual = self.gaussian_conditional(y_slice_residual*mask_slice,
-                                                                        scale_res*mask_slice,
-                                                                        mu_res*mask_slice)
-            
-
-            y_likelihood_residual.append(y_slice_likelihood_residual)
-            y_likelihood.append(y_slice_likelihood)
-
-            # quantize the residual
-            y_hat_slice_residual = ste_round(y_slice_residual - mu_res) + mu_res
-
-            #quantize the entire 
-            y_hat_slice_zero_residual= ste_round(y_slice - mu) + mu
-
-            # add the residual based on the mask
-            y_hat_slice = y_hat_slice_zero_residual + y_hat_slice_residual*mask_slice
-
-
-            lrp_support = torch.cat([mean_support, y_hat_slice], dim=1)
-            lrp = self.lrp_transforms[slice_index](lrp_support)
-            lrp = 0.5 * torch.tanh(lrp)
-            y_hat_slice += lrp
-
-            y_hat_slices.append(y_hat_slice)
-            y_hat_slices_zero_residual.append(y_hat_slice_zero_residual)
-            y_hat_slices_residual.append(y_hat_slice_residual)
-
-
-
-
-
-        y_hat = torch.cat(y_hat_slices, dim=1)
-        y_likelihoods = torch.cat(y_likelihood, dim=1)
-        y_likelihood_residual = torch.cat(y_likelihood, dim=1)
-        y_hat_res = torch.cat(y_hat_slices_residual,dim = 1)
-        y_hat_zero = torch.cat(y_hat_slice_zero_residual,dim = 1)
-        x_hat = self.g_s(y_hat)
-
         return {
-            "x_hat": x_hat,
-            "likelihoods": {"y": y_likelihoods, "z": z_likelihoods,"r":y_likelihood_residual},
-            "latent": {"zero_residual":y_hat_zero, "y_hat":y_hat,"res":y_hat_res}
+            "x_hat": x_hat_progressive,
+            "likelihoods": {"y": y_likelihoods, "z": z_likelihoods,"z_prog":z_likelihoods_prog,"y_prog":y_likelihoods_prog},
+
         }
     
 
