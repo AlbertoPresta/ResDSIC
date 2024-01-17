@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from compressai import datasets, entropy_models, layers, models, ops
+from compress import datasets, entropy_models, layers, models, ops
 
 try:
     from .version import __version__

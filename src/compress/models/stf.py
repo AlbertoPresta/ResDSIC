@@ -6,10 +6,10 @@ from timm.models.layers import DropPath, to_2tuple, trunc_normal_
 from .utils import conv, update_registered_buffers, deconv
 
 import torch.nn as nn
-from compressai.entropy_models import EntropyBottleneck, GaussianConditional
-from compressai.ans import BufferedRansEncoder, RansDecoder
-from compressai.layers import conv3x3, subpel_conv3x3
-from compressai.ops import ste_round
+from compress.entropy_models import EntropyBottleneck, GaussianConditional
+from compress.ans import BufferedRansEncoder, RansDecoder
+from compress.layers import conv3x3, subpel_conv3x3
+from compress.ops import ste_round
 from .base import CompressionModel
 
 # From Balle's tensorflow compression examples

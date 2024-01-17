@@ -23,7 +23,11 @@ def get_scale_table(min=SCALES_MIN, max=SCALES_MAX, levels=SCALES_LEVELS):
 class ResWACNN(WACNN):
     """CNN based model"""
 
-    def __init__(self, N=192, M=320,mask_policy = "block-wise",  **kwargs):
+    def __init__(self, N=192,
+                M=320,
+                mask_policy = "learnable-mask",
+                lmbda_list = [0.03,0.01],
+                **kwargs):
         super().__init__(N = N, M = M, **kwargs)
 
         self.N = N 
@@ -34,11 +38,16 @@ class ResWACNN(WACNN):
         assert self.N%self.factor == 0 
         self.T = int(self.N//self.factor) + 3
         self.mask_policy = mask_policy
+        self.lmbda_list = lmbda_list
 
+        self.scalable_levels = len(self.lmbda_list)
+
+        self.lmbda_index_list = dict(zip(self.lmbda_list[::-1], [i  for i in range(len(self.lmbda_list))] ))
+        #self.lmbda_index_list[lmbda_list[0]] = 100  # let the all latent space with the highest lamnda
     
 
 
-        self.g_a_residual = nn.Sequential(
+        self.g_a_progressive = nn.Sequential(
             conv(self.T, N, kernel_size=5, stride=2), # halve 2 so 128
             GDN(N),
             conv(N, N, kernel_size=5, stride=2), # halve 4 so 64 k**2 = 16  
@@ -50,15 +59,35 @@ class ResWACNN(WACNN):
         )
 
 
-        self.h_a_res = nn.Sequential(
-            conv(M, N, stride=1, kernel_size=3),
-            nn.ReLU(inplace=True),
-            conv(N, N),
-            nn.ReLU(inplace=True),
-            conv(N, N),
+        if self.mask_policy == "learnable-mask":
+            self.gamma = torch.nn.Parameter(torch.ones((self.scalable_levels - 1, self.M))) #il primo e il base layer
+            self.mask_conv = nn.Sequential(torch.nn.Conv2d(in_channels=self.M, out_channels=self.M, kernel_size=1, stride=1),)
+           
+
+        self.h_mean_prog = nn.Sequential(
+            conv3x3(192, 192),
+            nn.GELU(),
+            subpel_conv3x3(192, 224, 2),
+            nn.GELU(),
+            conv3x3(224, 256),
+            nn.GELU(),
+            subpel_conv3x3(256, 288, 2),
+            nn.GELU(),
+            conv3x3(288, 320),
         )
 
- 
+        self.h_scale_prog = nn.Sequential(
+            conv3x3(192, 192),
+            nn.GELU(),
+            subpel_conv3x3(192, 224, 2),
+            nn.GELU(),
+            conv3x3(224, 256),
+            nn.GELU(),
+            subpel_conv3x3(256, 288, 2),
+            nn.GELU(),
+            conv3x3(288, 320),
+        )
+
 
 
     def split_ga(self, x, begin = True):
@@ -76,67 +105,49 @@ class ResWACNN(WACNN):
         res = torch.cat([y_base,x],dim = 1).to(x.device)
         return res 
 
-    def masking(self,scale, p = 0, device = torch.device("cuda")):
-        shapes = scale.shape
-        if self.mask_policy == "block-wise":
-            res = []
-            y_res = torch.zeros(shapes).to(device)
-            y_res= y_res.chunk(self.num_slices, 1)
-            for slice_index, y_slice in enumerate(y_res):
-                if slice_index < self.percentages[p] :
-                    y_slice +=  1.0
-                    res.append(y_slice)
-                else:
-                    res.append(y_slice)
-            return torch.cat(res,dim = 1).to(device)
-        elif self.mask_policy == "learnable-mask":
-            importance_map =  self.mask_conv(scale)
-            importance_map = torch.clip(importance_map + 0.5, 0, 1)
-            gamma = torch.sum(torch.stack([self.gamma[j] for j in range(p + 1)]),dim = 0)
-            gamma = gamma[None, :, None, None]
-            
-            adjusted_importance_map = importance_map*gamma
-            self.gamma[0,:].data *= 0.0 # self.gamma[0,:].data*0.0
-            self.gamma.data = torch.relu(self.gamma.data) 
-            #self.gamma.data, _ = torch.sort(self.gamma.data)
-            #self.gamma.data[0][None,:,None,None] = 0.0
-            
+    def extract_mask(self,scale,  pr = 0):
 
-        
+        shapes = scale.shape
+        bs, ch, w,h = shapes
+        if self.mask_policy == "point-based-std":
+            assert scale is not None 
+            pr = pr*0.1  
+            scale = scale.ravel()
+            quantile = torch.quantile(scale, pr)
+            res = scale >= quantile 
+            #print("dovrebbero essere soli 1: ",torch.unique(res, return_counts = True))
+            return res.reshape(bs,ch,w,h).to(torch.float)
+        elif self.mask_policy == "learnable-mask":
+            if self.lmbda_index_list[pr] == 0:
+                return torch.zeros_like(scale).to(scale.device)
+            
+            importance_map =  self.mask_conv(scale) 
+            importance_map = torch.clip(importance_map + 0.5, 0, 1)
+            gamma = torch.sum(torch.stack([self.gamma[j] for j in range(self.lmbda_index_list[pr])]),dim = 0) # più uno l'hom esso in lmbda_index
+            gamma = gamma[None, :, None, None]
+            gamma = torch.relu(gamma)
+
+            
+            adjusted_importance_map = torch.pow(importance_map, gamma)
+            return adjusted_importance_map          
         else:
             raise NotImplementedError()
         
-
-
         
+    # provo a tenere tutti insieme! poi vediamo 
+    def forward(self, x, quality = None):
 
-    def forward(self, x, p = 0):
-        """
-        Da completare e pensare ancora, il problema è principalmente questo: y_residual sarebbe bello mandarlo in maniera indipendente da
-        y_principale, di modo da avere uno spazio latente totalmente scalabile, mentre ora non è così.
-        cosa si può fare? inserire un modulo (oppure condividerlo) per codificare il residuo e aggiungerlo dopo  
-        
-        """
         y_base= self.split_ga(x)
         y = self.split_ga(y_base,begin = False)
-
-        y_residual_input = self.concatenate(y_base,x)
-        y_residual = self.g_a_residual(y_residual_input)
-
-        
-        y = y 
-
-
         y_shape = y.shape[2:]
 
-    
+        y_progressive_support = self.concatenate(y_base,x)
+        y_progressive = self.g_a_progressive(y_progressive_support)
+
 
         z = self.h_a(y)
         _, z_likelihoods = self.entropy_bottleneck(z)
 
-        # Use rounding (instead of uniform noise) to modify z before passing it
-        # to the hyper-synthesis transforms. Note that quantize() overrides the
-        # gradient to create a straight-through estimator.
         z_offset = self.entropy_bottleneck._get_medians()
         z_tmp = z - z_offset
         z_hat = ste_round(z_tmp) + z_offset
@@ -145,12 +156,115 @@ class ResWACNN(WACNN):
         latent_means = self.h_mean_s(z_hat)
 
 
-        mask = self.masking(y_residual,
-                             p = p 
-                            )  # determina la maschera
+        # calcoliamo mean and std per il progressive
         
-        latent_scales_residual = self.h_scale_s(z_hat)
-        latent_means_residual = self.h_mean_s(z_hat)
+        z_prog = self.h_a(y_progressive)
+        _, z_likelihoods_prog = self.entropy_bottleneck(z_prog)
+
+        z_offset_prog = self.entropy_bottleneck._get_medians()
+        z_tmp_prog = z_prog - z_offset_prog
+        z_hat_prog = ste_round(z_tmp_prog) + z_offset_prog
+
+        scales_prog = self.h_scale_prog(z_hat_prog)
+        means_prog = self.h_mean_prog(z_hat_prog)
+
+        list_quality = self.lmbda_list if quality is None else [quality]
+
+
+        y_slices = y.chunk(self.num_slices, 1)
+
+
+        y_likelihoods_progressive = []
+        y_likelihood_main = []
+
+        x_hat_progressive = []
+        
+
+
+
+        for j,p in enumerate(list_quality): 
+            mask = self.extract_mask(latent_scales,quality = p)
+            if self.mask_policy == "learnable-mask":
+                # Create a relaxed mask for quantization
+                samples = mask + (torch.rand_like(mask) - 0.5)
+                mask = samples + samples.round().detach() - samples.detach()  # Differentiable torch.round()
+
+ 
+            
+            
+            y_prog_q_zero = y_progressive - means_prog 
+            y_prog_q= mask*y_prog_q_zero 
+
+
+            _,y_prog_q_likelihood = self.gaussian_conditional(y_prog_q, scale*mask) 
+
+            y_likelihoods_progressive.append(y_prog_q_likelihood)
+
+            y_prog_q = ste_round(y_prog_q) + means_prog 
+
+
+            y_prog_q_slices = y_prog_q.chunck(self.num_slices,dim = 1)
+            y_hat_slices = []
+            y_hat_slices_scalable = []
+            
+
+            for slice_index, y_slice in enumerate(y_slices):
+                y_hat_prog_slice = y_prog_q_slices[slice_index]
+                support_slices = (y_hat_slices if self.max_support_slices < 0 else y_hat_slices[:self.max_support_slices])
+                
+
+
+                # encode the main latent representation 
+                mean_support = torch.cat([latent_means] + support_slices, dim=1)
+                mu = self.cc_mean_transforms[slice_index](mean_support)
+                mu = mu[:, :, :y_shape[0], :y_shape[1]]
+
+                scale_support = torch.cat([latent_scales] + support_slices, dim=1)
+                scale = self.cc_scale_transforms[slice_index](scale_support)
+                scale = scale[:, :, :y_shape[0], :y_shape[1]]
+
+                _, y_slice_likelihood = self.gaussian_conditional(y_slice, scale, mu)
+                
+                
+                if j == 0:
+                    y_likelihood_main.append(y_slice_likelihood)
+                y_hat_slice_base = ste_round(y_slice - mu) + mu  
+
+                y_hat_slice = y_hat_slice_base + y_hat_prog_slice 
+
+                lrp_support = torch.cat([mean_support, y_hat_slice], dim=1)
+                lrp = self.lrp_transforms[slice_index](lrp_support)
+                lrp = 0.5 * torch.tanh(lrp)
+                y_hat_slice += lrp
+
+
+                y_hat_slices.append(y_hat_slice_base)
+                y_hat_slices_scalable.append(y_hat_slice)
+
+            y_hat_q = torch.cat(y_hat_slices_scalable,dim = 1) #questo va preso 
+
+
+            x_hat_q = self.g_s(y_hat_q) 
+
+            x_hat_progressive.append(x_hat_q)
+        
+
+        x_hat_progressive = torch.cat(x_hat_progressive.unsqueeze(0),dim = 0) #num_scalable, BS,3,W,H
+        
+        y_likelihoods = torch.cat(y_likelihood_main, dim = 0) # BS,3,W,H solo per base 
+         
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

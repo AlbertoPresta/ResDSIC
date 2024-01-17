@@ -32,9 +32,9 @@ from PIL import Image
 from pytorch_msssim import ms_ssim
 from torchvision import transforms
 
-import compressai
+import compress
 
-from compressai.zoo import load_state_dict, models
+from compress.zoo import load_state_dict, models
 
 torch.backends.cudnn.deterministic = True
 torch.set_num_threads(1)
@@ -191,8 +191,8 @@ def setup_args():
     parent_parser.add_argument(
         "-c",
         "--entropy-coder",
-        choices=compressai.available_entropy_coders(),
-        default=compressai.available_entropy_coders()[0],
+        choices=compress.available_entropy_coders(),
+        default=compress.available_entropy_coders()[0],
         help="entropy coder (default: %(default)s)",
     )
     parent_parser.add_argument(
@@ -237,7 +237,7 @@ def main(argv):
         print("Error: no images found in directory.", file=sys.stderr)
         sys.exit(1)
 
-    compressai.set_entropy_coder(args.entropy_coder)
+    compress.set_entropy_coder(args.entropy_coder)
 
     runs = args.paths
     opts = (args.architecture,)
