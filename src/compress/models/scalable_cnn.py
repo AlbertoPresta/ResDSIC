@@ -44,6 +44,9 @@ class ResWACNN(WACNN):
 
         self.lmbda_index_list = dict(zip(self.lmbda_list[::-1], [i  for i in range(len(self.lmbda_list))] ))
         #self.lmbda_index_list[lmbda_list[0]] = 100  # let the all latent space with the highest lamnda
+        
+        
+        self.entropy_bottleneck_prog = EntropyBottleneck(self.N)
     
 
 
@@ -62,10 +65,24 @@ class ResWACNN(WACNN):
         if self.mask_policy == "learnable-mask":
             self.gamma = torch.nn.Parameter(torch.ones((self.scalable_levels - 1, self.M))) #il primo e il base layer
             self.mask_conv = nn.Sequential(torch.nn.Conv2d(in_channels=self.M, out_channels=self.M, kernel_size=1, stride=1),)
-           
+
+
+
+        self.h_a_prog = nn.Sequential(
+            conv3x3(self.M, 320),
+            nn.GELU(),
+            conv3x3(320, 288),
+            nn.GELU(),
+            conv3x3(288, 256, stride=2),
+            nn.GELU(),
+            conv3x3(256, 224),
+            nn.GELU(),
+            conv3x3(224, self.N, stride=2),
+        )
+  
 
         self.h_mean_prog = nn.Sequential(
-            conv3x3(192, 192),
+            conv3x3(self.N, 192),
             nn.GELU(),
             subpel_conv3x3(192, 224, 2),
             nn.GELU(),
@@ -73,11 +90,11 @@ class ResWACNN(WACNN):
             nn.GELU(),
             subpel_conv3x3(256, 288, 2),
             nn.GELU(),
-            conv3x3(288, 320),
+            conv3x3(288, self.M),
         )
 
         self.h_scale_prog = nn.Sequential(
-            conv3x3(192, 192),
+            conv3x3(self.N, 192),
             nn.GELU(),
             subpel_conv3x3(192, 224, 2),
             nn.GELU(),
@@ -85,7 +102,7 @@ class ResWACNN(WACNN):
             nn.GELU(),
             subpel_conv3x3(256, 288, 2),
             nn.GELU(),
-            conv3x3(288, 320),
+            conv3x3(288, self.M),
         )
 
 
@@ -158,10 +175,10 @@ class ResWACNN(WACNN):
 
         # calcoliamo mean and std per il progressive
         
-        z_prog = self.h_a(y_progressive)
-        _, z_likelihoods_prog = self.entropy_bottleneck(z_prog)
+        z_prog = self.h_a_prog(y_progressive)
+        _, z_likelihoods_prog = self.entropy_bottleneck_prog(z_prog)
 
-        z_offset_prog = self.entropy_bottleneck._get_medians()
+        z_offset_prog = self.entropy_bottleneck_prog._get_medians()
         z_tmp_prog = z_prog - z_offset_prog
         z_hat_prog = ste_round(z_tmp_prog) + z_offset_prog
 
@@ -207,7 +224,8 @@ class ResWACNN(WACNN):
 
             for slice_index, y_slice in enumerate(y_slices):
                 y_hat_prog_slice = y_prog_q_slices[slice_index]
-                support_slices = (y_hat_slices if self.max_support_slices < 0 else y_hat_slices[:self.max_support_slices])
+                support_index = min(max(0,slice_index - self.max_support_slices),self.max_support_slices)
+                support_slices = (y_hat_slices if self.max_support_slices < 0 else y_hat_slices[support_index:])
                 
                 # encode the main latent representation 
                 mean_support = torch.cat([latent_means] + support_slices, dim=1)
