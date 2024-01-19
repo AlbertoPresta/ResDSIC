@@ -1,6 +1,6 @@
 import torch.nn as nn
 
-from compressai.entropy_models import EntropyBottleneck
+from compressai.entropy_models import EntropyBottleneck, GaussianConditional
 from .utils import update_registered_buffers
 
 class CompressionModel(nn.Module):
@@ -23,9 +23,7 @@ class CompressionModel(nn.Module):
         """Return the aggregated loss over the auxiliary entropy bottleneck
         module(s).
         """
-        aux_loss = sum(
-            m.loss() for m in self.modules() if isinstance(m, EntropyBottleneck)
-        )
+        aux_loss = sum(m.loss() for m in self.modules() if isinstance(m, EntropyBottleneck))
         return aux_loss
 
     def _initialize_weights(self):
@@ -55,18 +53,31 @@ class CompressionModel(nn.Module):
         for m in self.children():
             if not isinstance(m, EntropyBottleneck):
                 continue
+            print("sto facendo l'update e dovrei entrare due volte qua")
             rv = m.update(force=force)
             updated |= rv
         return updated
 
-    def load_state_dict(self, state_dict):
-        # Dynamically update the entropy bottleneck buffers related to the CDFs
-        update_registered_buffers(
-            self.entropy_bottleneck,
-            "entropy_bottleneck",
-            ["_quantized_cdf", "_offset", "_cdf_length"],
-            state_dict,
-        )
-        super().load_state_dict(state_dict)
+    def load_state_dict(self, state_dict, strict=True):
+        for name, module in self.named_modules():
+            if not any(x.startswith(name) for x in state_dict.keys()):
+                continue
 
+            if isinstance(module, EntropyBottleneck):
+                update_registered_buffers(
+                    module,
+                    name,
+                    ["_quantized_cdf", "_offset", "_cdf_length"],
+                    state_dict,
+                )
+
+            if isinstance(module, GaussianConditional):
+                update_registered_buffers(
+                    module,
+                    name,
+                    ["_quantized_cdf", "_offset", "_cdf_length", "scale_table"],
+                    state_dict,
+                )
+
+        return nn.Module.load_state_dict(self, state_dict, strict=strict)
 

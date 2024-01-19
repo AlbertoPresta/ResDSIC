@@ -15,4 +15,4 @@
 
 from .stf import SymmetricalTransFormer
 from .cnn import WACNN
-from scalable_cnn import ResWACNN, ResWACNN2018
+from .scalable_cnn import ResWACNN, ResWACNN2018

@@ -1,6 +1,7 @@
 import math 
 import torch.nn as nn 
 import torch 
+from torch.nn.functional import mse_loss
 
 class RateDistortionLoss(nn.Module):
     """Custom rate distortion loss with a Lagrangian parameter."""
@@ -26,57 +27,74 @@ class RateDistortionLoss(nn.Module):
 
 class ScalableRateDistortionLoss(nn.Module):
 
-    def __init__(self, weight = 1, lmbda_starter = 0.75, scalable_levels = 5):
+    def __init__(self, weight = 255**2, lmbda_list = [0.75],  device = "cuda"):
         super().__init__()
-        self.mse = nn.MSELoss()
-        self.scalable_levels = scalable_levels
-        self.lmbda_starter = lmbda_starter
-        self.lmbda =  [self.lmbda_starter*(2**(-i)) for i in range(self.scalable_levels)][::-1]
-        print("******************  --->",self.lmbda)
-        self.scales_tensor = torch.tensor(self.lmbda).view(-1, 1, 1, 1) # (5, 1, 1, 1)
+        self.scalable_levels = len(lmbda_list)
+        self.lmbda = torch.tensor(lmbda_list).to(device) 
         self.weight = weight
 
         
 
-    def forward(self,output,target): 
+    def forward(self,output,target,lmbda = None): 
 
-        N, _, H, W = target.size()
+        batch_size_images, _, H, W = target.size()
         out = {}
-        num_pixels = N * H * W
+        num_pixels = batch_size_images * H * W
 
 
 
 
         # Check the batch sizes of images and recon_images
-        batch_size_recon = output["x_hat"].shape[0] # N * num_levels
+        batch_size_recon = output["x_hat"].shape[0] # num_levels,N
 
-        batch_size_images =  N
+        
+
+
         #print(batch_size_images,"  ",N)
 
         # If the batch sizes of images and recon_images are different, adjust the batch size
-        if batch_size_images != batch_size_recon:
+        if batch_size_recon != 1:
             # Copy images to match the batch size of recon_images
-            rate = batch_size_recon // batch_size_images  # rate = 5
-            
-            extend_images = torch.cat([target] * rate, dim=0)
+            target = target.unsqueeze(0)
+            extend_images = target.repeat(batch_size_recon,1,1,1,1) #num_levels, BS,W,H
+        else:
+            extend_images = target.unsqueeze(0)
+        
 
-        scales = self.scales_tensor.repeat((batch_size_images, 1, 1, 1)).to(target.device)   # (batch_size * perce, 1
-        out["mse_loss"] = ((scales * (extend_images - output["x_hat"])) ** 2).mean()*self.weight
-
-
-
-        out["bpp_loss_hype"] = sum((torch.log(likelihoods).sum() / (-math.log(2) * num_pixels)) 
-                                   for likelihoods in output["likelihoods_hyperprior"].values())
+        if lmbda is  None:
+            lmbda = self.lmbda
 
 
-        log_y_likelihoods = torch.log(output["likelihoods"]["y"])
-        log_residual_likelihoods = torch.log(output["likelihoods"]["r"])   
+        #print("questi dovrebbero essere uguali: ",extend_images.shape," ",output["x_hat"].shape)
 
-        out["bpp_loss_y"]  = torch.sum(log_y_likelihoods) / (-math.log(2) * num_pixels)
-        out["bpp_loss_res"] = torch.sum(log_residual_likelihoods) / (-math.log(2) * num_pixels)
 
-        out["bpp_loss"] = out["bpp_loss_hype"] + out["bpp_loss_y"] + out["bpp_loss_res"]
 
-        out["loss"] = out["bpp_loss"] + out["mse_loss"] 
+        denominator = -math.log(2) * num_pixels  # (batch_size * perce, 1
+        out["mse_loss"] = mse_loss(extend_images,output["x_hat"],reduction = 'none') # compute the point-wise mse #((scales * (extend_images - output["x_hat"])) ** 2).mean()*self.weight
+        out["mse_loss"] = out["mse_loss"].mean(dim=(1,2,3,4)) #dim = num_levels 
+
+
+
+        likelihoods = output["likelihoods"]
+
+        out["bpp_base"]= (torch.log(likelihoods["y"].squeeze(0)).sum() + torch.log(likelihoods["z"]).sum())/denominator
+        out["bpp_scalable"] = (torch.log(likelihoods["y_prog"]).sum() + torch.log(likelihoods["z_prog"]).sum())/denominator 
+
+        #out["bpp_scalable"] = torch.zeros_like(out["bpp_base"]).to(out["bpp_base"].device)#
+        #prova = torch.log(likelihoods["y_prog"][0]).sum()/denominator
+        print("questo numero dovrebbe essere 2: ",batch_size_recon)
+
+        out["bpp_loss"] = out["bpp_scalable"] + batch_size_recon*out["bpp_base"]
+
+        #out["bpp_loss"] = out["bpp_base"]
+
+
+        #self.lmbda = self.lmbda.to(out["mse_loss"].device) 
+
+
+
+
+
+        out["loss"] = out["bpp_loss"] + self.weight*(lmbda*out["mse_loss"]).mean() 
         return out
 

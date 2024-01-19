@@ -124,13 +124,15 @@ class EntropyModel(nn.Module):
     forward: Callable[..., Any] = _forward
 
     def quantize(
-        self, inputs: Tensor, mode: str, means: Optional[Tensor] = None
+        self, inputs , mode, means = None, mask = None
     ) -> Tensor:
         if mode not in ("noise", "dequantize", "symbols"):
             raise ValueError(f'Invalid quantization mode: "{mode}"')
         if mode == "noise":
             half = float(0.5)
             noise = torch.empty_like(inputs).uniform_(-half, half)
+            if mask is not None:
+                noise = noise*mask #così non aggingo rumore dove non serve
             inputs = inputs + noise
             return inputs
 
@@ -648,10 +650,11 @@ class GaussianConditional(EntropyModel):
         scales: Tensor,
         means: Optional[Tensor] = None,
         training: Optional[bool] = None,
+        mask: Optional[Tensor] = None
     ) -> Tuple[Tensor, Tensor]:
         if training is None:
             training = self.training
-        outputs = self.quantize(inputs, "noise" if training else "dequantize", means)
+        outputs = self.quantize(inputs, "noise" if training else "dequantize", means, mask = mask)
         likelihood = self._likelihood(outputs, scales, means)
         if self.use_likelihood_bound:
             likelihood = self.likelihood_lower_bound(likelihood)
