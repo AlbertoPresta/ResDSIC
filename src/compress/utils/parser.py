@@ -74,21 +74,17 @@ def parse_args(argv):
         help="Size of the patches to be cropped (default: %(default)s)",
     )
     parser.add_argument("--cuda", action="store_true", help="Use cuda")
+    parser.add_argument("--freeze", action="store_true", help="Use cuda")
     parser.add_argument(
         "--save", action="store_true", default=True, help="Save model to disk"
     )
     parser.add_argument(
-        "--save_path", type=str, default="ckpt/model.pth.tar", help="Where to Save model"
+        "--save_path", type=str, default="/scratch/ResDSIC/models/", help="Where to Save model"
     )
     parser.add_argument(
         "--seed", type=float, help="Set random seed for reproducibility"
     )
-    parser.add_argument(
-        "--clip_max_norm",
-        default=1.0,
-        type=float,
-        help="gradient clipping max norm (default: %(default)s",
-    )
+    parser.add_argument("--clip_max_norm",default=1.0,type=float,help="gradient clipping max norm (default: %(default)s",)
     parser.add_argument("--checkpoint", type=str, default = "/scratch/universal-dic/weights/q2/model.pth",help="Path to a checkpoint")
     args = parser.parse_args(argv)
     return args

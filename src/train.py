@@ -145,10 +145,9 @@ def main(argv):
 
     if args.lmbda_list == []:
         lmbda_list = None
-        lmbda_starter = args.lmbda_starter
     else:
         lmbda_list = args.lmbda_list
-        lmbda_starter = None
+
 
 
     
@@ -172,7 +171,7 @@ def main(argv):
         last_epoch = 0 # checkpoint["epoch"] + 1
         
         net.load_state_dict(checkpoint)
-        net.freezer()
+        
 
         
         #optimizer.load_state_dict(checkpoint["optimizer"])
@@ -184,7 +183,8 @@ def main(argv):
     lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, "min", factor=0.3, patience=4)
     criterion = ScalableRateDistortionLoss(lmbda_list=args.lmbda_list)
 
-    
+    if args.freeze:
+        net.freezer()
 
     best_loss = float("inf")
     counter = 0
@@ -225,8 +225,12 @@ def main(argv):
 
 
 
+        if args.checkpoint != "none":
+            check = "pret"
+        else:
+            check = "zero"
         # creating savepath
-        name_folder = args.model + "_" + args.mask_policy + "_" + str(args.M) + "_" + str(args.N)  + "_" + str(args.lmbda_list[0]) + "_" + str(args.lmbda_list[-1]) 
+        name_folder = check + "_" + "_" + str(args.scalable_levels) + "_" + args.model + "_" + args.mask_policy + "_" + str(args.M) + "_" + str(args.N)  + "_" + str(args.lmbda_list[0]) + "_" + str(args.lmbda_list[-1]) +"_" + str(args.freeze) 
         cartella = os.path.join(args.save_path,name_folder)
 
 

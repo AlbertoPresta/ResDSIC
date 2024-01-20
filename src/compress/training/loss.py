@@ -82,7 +82,7 @@ class ScalableRateDistortionLoss(nn.Module):
 
         #out["bpp_scalable"] = torch.zeros_like(out["bpp_base"]).to(out["bpp_base"].device)#
         #prova = torch.log(likelihoods["y_prog"][0]).sum()/denominator
-        print("questo numero dovrebbe essere 2: ",batch_size_recon)
+        #print("questo numero dovrebbe essere 2: ",batch_size_recon)
 
         out["bpp_loss"] = out["bpp_scalable"] + batch_size_recon*out["bpp_base"]
 
