@@ -85,6 +85,7 @@ class ScalableRateDistortionLoss(nn.Module):
         #print("questo numero dovrebbe essere 2: ",batch_size_recon)
 
         out["bpp_loss"] = out["bpp_scalable"] + batch_size_recon*out["bpp_base"]
+        #out["bpp_loss"] = out["bpp_scalable"] + out["bpp_base"]
 
         #out["bpp_loss"] = out["bpp_base"]
 

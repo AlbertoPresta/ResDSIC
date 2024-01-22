@@ -574,5 +574,3 @@ class ResWACNN(WACNN):
 
 
 
-#class ResWACNNAdapter(ResWACNN):
-#    pass

@@ -13,10 +13,12 @@
 # limitations under the License.
 
 
-from compress.models import SymmetricalTransFormer, WACNN,  ResWACNN
+from compress.models import SymmetricalTransFormer, WACNN,  ResWACNN, ResWACNNSharedEntropy, ResWACNNIndependentEntropy
 
 models = {
     'stf': SymmetricalTransFormer,
     'cnn': WACNN,
-    "resWacnn":ResWACNN
+    "resWacnn":ResWACNN,
+    "shared":ResWACNNSharedEntropy,
+    "independent":ResWACNNIndependentEntropy
 }

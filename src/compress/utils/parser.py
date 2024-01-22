@@ -8,7 +8,7 @@ def parse_args(argv):
     parser.add_argument(
         "-m",
         "--model",
-        default="resWacnn",
+        default="independent",
         choices=models.keys(),
         help="Model architecture (default: %(default)s)",
     )
@@ -16,7 +16,7 @@ def parse_args(argv):
     parser.add_argument(
         "-e",
         "--epochs",
-        default=100,
+        default=120,
         type=int,
         help="Number of epochs (default: %(default)s)",
     )
@@ -78,6 +78,8 @@ def parse_args(argv):
     parser.add_argument(
         "--save", action="store_true", default=True, help="Save model to disk"
     )
+
+    parser.add_argument("--lrp_prog", action="store_true", help="use common lrp for progressive")
     parser.add_argument(
         "--save_path", type=str, default="/scratch/ResDSIC/models/", help="Where to Save model"
     )
@@ -85,6 +87,6 @@ def parse_args(argv):
         "--seed", type=float, help="Set random seed for reproducibility"
     )
     parser.add_argument("--clip_max_norm",default=1.0,type=float,help="gradient clipping max norm (default: %(default)s",)
-    parser.add_argument("--checkpoint", type=str, default = "/scratch/universal-dic/weights/q2/model.pth",help="Path to a checkpoint")
+    parser.add_argument("--checkpoint", type=str, default = "/scratch/universal-dic/weights/q2/model.pth",help="Path to a checkpoint") #"/scratch/universal-dic/weights/q2/model.pth"
     args = parser.parse_args(argv)
     return args

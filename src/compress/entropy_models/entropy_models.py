@@ -132,7 +132,7 @@ class EntropyModel(nn.Module):
             half = float(0.5)
             noise = torch.empty_like(inputs).uniform_(-half, half)
             if mask is not None:
-                noise = noise*mask #così non aggingo rumore dove non serve
+                noise = noise*mask 
             inputs = inputs + noise
             return inputs
 
@@ -356,9 +356,8 @@ class EntropyBottleneck(EntropyModel):
     def update(self, force: bool = False) -> bool:
         # Check if we need to update the bottleneck parameters, the offsets are
         # only computed and stored when the conditonal model is update()'d.
-        if self._offset.numel() > 0 and not force:
-            return False
 
+        print("entropy due volte")
         medians = self.quantiles[:, 0, 1]
         minima = medians - self.quantiles[:, 0, 0]
         minima = torch.ceil(minima).int()
@@ -591,14 +590,14 @@ class GaussianConditional(EntropyModel):
         # Check if we need to update the gaussian conditional parameters, the
         # offsets are only computed and stored when the conditonal model is
         # updated.
-        if self._offset.numel() > 0 and not force:
-            return False
+
         device = self.scale_table.device
         self.scale_table = self._prepare_scale_table(scale_table).to(device)
         self.update()
         return True
 
     def update(self):
+        print("guass due volte")
         multiplier = -self._standardized_quantile(self.tail_mass / 2)
         pmf_center = torch.ceil(self.scale_table * multiplier).int()
         pmf_length = 2 * pmf_center + 1

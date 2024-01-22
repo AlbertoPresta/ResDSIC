@@ -16,3 +16,5 @@
 from .stf import SymmetricalTransFormer
 from .cnn import WACNN
 from .scalable.scalable_cnn import ResWACNN
+from .scalable.shared_entropy import ResWACNNSharedEntropy
+from .scalable.independent_entropy import ResWACNNIndependentEntropy

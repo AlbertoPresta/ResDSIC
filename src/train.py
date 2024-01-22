@@ -66,6 +66,8 @@ def configure_optimizers(net, args):
         if n.endswith(".quantiles") and p.requires_grad
     }
 
+    print("dio porco: ",len(aux_parameters))
+    print("zio porco: ",aux_parameters)
 
 
 
@@ -151,11 +153,12 @@ def main(argv):
 
 
     
-    net = models["resWacnn"]( N = args.N,
+    net = models[args.model]( N = args.N,
                              M = args.M,
                             scalable_levels = args.scalable_levels, 
                               mask_policy = args.mask_policy,
-                              lmbda_list = lmbda_list
+                              lmbda_list = lmbda_list,
+                              lrp_prog = args.lrp_prog
                              )
     net = net.to(device)
 
@@ -184,6 +187,7 @@ def main(argv):
     criterion = ScalableRateDistortionLoss(lmbda_list=args.lmbda_list)
 
     if args.freeze:
+        print("entro su freezer!")
         net.freezer()
 
     best_loss = float("inf")
@@ -199,10 +203,12 @@ def main(argv):
         if num_tainable > 0:
             counter = train_one_epoch( net, criterion, train_dataloader, optimizer, aux_optimizer, epoch, counter)
             
-
+        print("finito il train della epoca")
         loss = valid_epoch(epoch, valid_dataloader,criterion, net, pr_list = net.lmbda_list)
+        print("finito il valid della epoca")
 
         _ = test_epoch(epoch, test_dataloader,criterion, net, pr_list = net.lmbda_list)
+        print("finito il test della epoca")
 
         is_best = loss < best_loss
         best_loss = min(loss, best_loss)
