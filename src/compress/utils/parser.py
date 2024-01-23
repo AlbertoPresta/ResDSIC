@@ -80,6 +80,7 @@ def parse_args(argv):
     )
 
     parser.add_argument("--lrp_prog", action="store_true", help="use common lrp for progressive")
+    parser.add_argument("--ind_lrp", action="store_true", help="use common lrp for progressive")
     parser.add_argument(
         "--save_path", type=str, default="/scratch/ResDSIC/models/", help="Where to Save model"
     )

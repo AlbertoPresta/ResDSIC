@@ -27,6 +27,7 @@ class ResWACNNIndependentEntropy(ResWACNNSharedEntropy):
                 lmbda_list = None,
                 lmbda_starter = 0.075,
                 lrp_prog = True,
+                independent_lrp = False,
                 **kwargs):
         super().__init__(N = N, 
                          M = M,
@@ -101,6 +102,24 @@ class ResWACNNIndependentEntropy(ResWACNNSharedEntropy):
             ) for i in range(10)
             )
         
+
+        self.independent_lrp = independent_lrp 
+
+        if self.independent_lrp:
+            self.lrp_transforms_prog = nn.ModuleList(
+                nn.Sequential(
+                    conv(320 + 32 * min(i+1, 6), 224, stride=1, kernel_size=3),
+                    nn.GELU(),
+                    conv(224, 176, stride=1, kernel_size=3),
+                    nn.GELU(),
+                    conv(176, 128, stride=1, kernel_size=3),
+                    nn.GELU(),
+                    conv(128, 64, stride=1, kernel_size=3),
+                    nn.GELU(),
+                    conv(64, 32, stride=1, kernel_size=3),
+                ) for i in range(10)
+            )
+
         self.lrp_prog = lrp_prog
         self.entropy_bottleneck = EntropyBottleneck(self.N)
         self.entropy_bottleneck_prog = EntropyBottleneck(self.N) #utilizzo lo stesso modello, ma non lo stesso entropy bottleneck
@@ -133,6 +152,10 @@ class ResWACNNIndependentEntropy(ResWACNNSharedEntropy):
 
         if self.mask_policy== "learnable-mask":
             print("mask conv",sum(p.numel() for p in self.mask_conv.parameters()))
+        
+        if self.independent_lrp:
+             print("lrp_transform_prog",sum(p.numel() for p in self.lrp_transforms_prog.parameters()))
+
            
 
         print("**************************************************************************")
@@ -345,7 +368,10 @@ class ResWACNNIndependentEntropy(ResWACNNSharedEntropy):
 
                     if self.lrp_prog:
                         lrp_support = torch.cat([mean_support_prog, y_hat_prog_slice], dim=1)
-                        lrp = self.lrp_transforms[slice_index](lrp_support)
+                        if self.independent_lrp:
+                            lrp = self.lrp_transforms_prog[slice_index](lrp_support)
+                        else:
+                            lrp = self.lrp_transforms[slice_index](lrp_support)
                         lrp = 0.5 * torch.tanh(lrp)
                         y_hat_prog_slice += lrp
 
@@ -515,8 +541,11 @@ class ResWACNNIndependentEntropy(ResWACNNSharedEntropy):
                 progressive_strings.append(y_q_string)
 
                 if self.lrp_prog:
-                    lrp_support = torch.cat([mean_support_prog, y_hat_slice_prog], dim=1)
-                    lrp = self.lrp_transforms[slice_index](lrp_support)
+                    lrp_support = torch.cat([mean_support_prog,y_hat_slice_prog], dim=1)
+                    if self.independent_lrp:
+                        lrp = self.lrp_transforms_prog[slice_index](lrp_support)
+                    else:
+                        lrp = self.lrp_transforms[slice_index](lrp_support)
                     lrp = 0.5 * torch.tanh(lrp)
                     y_hat_slice_prog += lrp
 
@@ -652,10 +681,13 @@ class ResWACNNIndependentEntropy(ResWACNNSharedEntropy):
             
                 if self.lrp_prog:
                     lrp_support = torch.cat([mean_support_prog, y_hat_slice_prog], dim=1)
-                    lrp = self.lrp_transforms[slice_index](lrp_support)
+                    if self.independent_lrp:
+                        lrp = self.lrp_transforms_prog[slice_index](lrp_support)
+                    else:
+                        lrp = self.lrp_transforms[slice_index](lrp_support)
                     lrp = 0.5 * torch.tanh(lrp)
                     y_hat_slice_prog += lrp
-                
+
                 y_hat_prog.append(y_hat_slice_prog)
                 y_hat_complete_slice = y_hat_slice_prog + y_hat_slice
                 y_hat_complete.append(y_hat_complete_slice)

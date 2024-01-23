@@ -158,7 +158,8 @@ def main(argv):
                             scalable_levels = args.scalable_levels, 
                               mask_policy = args.mask_policy,
                               lmbda_list = lmbda_list,
-                              lrp_prog = args.lrp_prog
+                              lrp_prog = args.lrp_prog,
+                              independent_lrp = args.ind_lrp
                              )
     net = net.to(device)
 
