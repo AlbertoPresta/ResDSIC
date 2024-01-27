@@ -92,13 +92,13 @@ def configure_optimizers(net, args):
 
 
 
-def save_checkpoint(state, is_best, filename,filename_best,epoch):
+def save_checkpoint(state, is_best, filename,filename_best,very_best):
 
 
     if is_best:
         torch.save(state, filename_best)
-        if epoch > 90:
-            wandb.save(filename_best)
+        torch.save(state, very_best)
+        wandb.save(very_best)
     else:
         torch.save(state, filename)
 
@@ -173,19 +173,22 @@ def main(argv):
         print("Loading", args.checkpoint)
         checkpoint = torch.load(args.checkpoint, map_location=device)
         last_epoch = 0 # checkpoint["epoch"] + 1
-        
+        net.update()
         net.load_state_dict(checkpoint)
         
-
-        
-        #optimizer.load_state_dict(checkpoint["optimizer"])
-        #aux_optimizer.load_state_dict(checkpoint["aux_optimizer"])
-        #lr_scheduler.load_state_dict(checkpoint["lr_scheduler"])
-
-    
     optimizer, aux_optimizer = configure_optimizers(net, args)
     lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, "min", factor=0.3, patience=4)
     criterion = ScalableRateDistortionLoss(lmbda_list=args.lmbda_list)
+
+
+    if args.checkpoint != "none" and args.continue_training:    
+        print("conitnuo il training!")
+        optimizer.load_state_dict(checkpoint["optimizer"])
+        #aux_optimizer.load_state_dict(checkpoint["aux_optimizer"])
+        lr_scheduler.load_state_dict(checkpoint["lr_scheduler"])
+
+    
+
 
     if args.freeze:
         print("entro su freezer!")
@@ -208,6 +211,9 @@ def main(argv):
         loss = valid_epoch(epoch, valid_dataloader,criterion, net, pr_list = net.lmbda_list)
         print("finito il valid della epoca")
 
+        lr_scheduler.step(loss)
+        print(f'Current patience level: {lr_scheduler.patience - lr_scheduler.num_bad_epochs}')
+
         _ = test_epoch(epoch, test_dataloader,criterion, net, pr_list = net.lmbda_list)
         print("finito il test della epoca")
 
@@ -224,8 +230,8 @@ def main(argv):
             bpp_res["our"] = bpp
             psnr_res["our"] = psnr
 
-            psnr_res["base"] =   [32.26,34.15,35.91,37.72]
-            bpp_res["base"] =  [0.309,0.449,0.649,0.895]
+            psnr_res["base"] =   [29.20, 30.59,32.26,34.15,35.91,37.72]
+            bpp_res["base"] =  [0.127,0.199,0.309,0.449,0.649,0.895]
 
             plot_rate_distorsion(bpp_res, psnr_res,epoch_enc)
             epoch_enc += 1
@@ -249,11 +255,11 @@ def main(argv):
 
 
 
-        filename, filename_best =  create_savepath(args, epoch, cartella)
+        filename, filename_best, very_best =  create_savepath(args, epoch, cartella)
 
 
 
-        if (is_best is True and epoch > 50) or epoch%10==0: #args.save:
+        if (is_best is True and epoch > 10) or epoch%10==0: #args.save:
             print("io qua devo entrare però!!!")
             net.update()
             save_checkpoint(
@@ -262,13 +268,24 @@ def main(argv):
                     "state_dict": net.state_dict(),
                     "optimizer": optimizer.state_dict(),
                     "lr_scheduler": lr_scheduler.state_dict(),
-                    "args":args
+                    "aux_optimizer":aux_optimizer if aux_optimizer is not None else "None",
+                    "args":args,
+                    "epoch":epoch
                 },
                 is_best,
                 filename,
                 filename_best,
-                epoch
+                very_best
                 )
+
+        print("log also the current leraning rate")
+
+        log_dict = {
+        "train":epoch,
+        "train/leaning_rate": optimizer.param_groups[0]['lr']
+        #"train/beta": annealing_strategy_gaussian.bet
+        }
+
 
 
         end = time.time()

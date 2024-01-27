@@ -17,8 +17,8 @@ def plot_rate_distorsion(bpp_res, psnr_res,epoch):
 
     legenda["base"]["colore"] = [palette[0],'-']
     legenda["base"]["legends"] = "reference"
-    legenda["base"]["symbols"] = ["*"]*4
-    legenda["base"]["markersize"] = [5]*4
+    legenda["base"]["symbols"] = ["*"]*6
+    legenda["base"]["markersize"] = [5]*6
 
     legenda["our"]["colore"] = [palette[3],'-']
     legenda["our"]["legends"] = "proposed"

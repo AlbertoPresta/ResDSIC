@@ -51,7 +51,8 @@ def create_savepath(args,epoch,base_path):
     
     print("savepath: ",savepath)
     print("savepath best: ",savepath_best)
-    return savepath, savepath_best
+    very_best  = join(base_path,"_very_best.pth.tar")
+    return savepath, savepath_best, very_best
 
 
 

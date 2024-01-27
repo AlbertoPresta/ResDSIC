@@ -29,6 +29,8 @@ class ResWACNNSharedEntropy(WACNN):
                 mask_policy = "learnable-mask",
                 lmbda_list = None,
                 lmbda_starter = 0.075,
+                lrp_prog = None,
+                independent_lrp = None,
                 **kwargs):
         super().__init__(N = N, M = M, **kwargs)
 
