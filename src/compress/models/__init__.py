@@ -13,8 +13,8 @@
 # limitations under the License.
 
 
-from .stf import SymmetricalTransFormer
-from .cnn import WACNN
-from .scalable.scalable_cnn import ResWACNN
-from .scalable.shared_entropy import ResWACNNSharedEntropy
-from .scalable.independent_entropy import ResWACNNIndependentEntropy
+
+from .WACNN.cnn import WACNN
+from .WACNN.scalable.scalable_cnn import ResWACNN
+from .WACNN.scalable.shared_entropy import ResWACNNSharedEntropy
+from .WACNN.scalable.independent_entropy import ResWACNNIndependentEntropy
