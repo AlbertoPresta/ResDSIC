@@ -4,7 +4,6 @@ from compress.entropy_models import EntropyBottleneck, GaussianConditional
 import torch.nn as nn 
 from ..tcm import TCM
 import torch 
-
 from compressai.layers import ResidualBlockWithStride,ConvTransBlock,conv3x3
 
 class SharedTCM(TCM):

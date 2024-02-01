@@ -14,7 +14,7 @@
 import wandb
 import random
 import sys
-from compress.utils.functions import  create_savepath
+from compress.utils.functions import  create_savepath, set_seed
 from compress.utils.parser import parse_args
 from compress.utils.plot import plot_rate_distorsion
 import time
@@ -28,6 +28,7 @@ from compress.training.loss import ScalableRateDistortionLoss, RateDistortionLos
 from compress.datasets.utils import ImageFolder, TestKodakDataset
 from compress.zoo import models
 import os
+from collections import OrderedDict
 
 def sec_to_hours(seconds):
     a=str(seconds//3600)
@@ -66,8 +67,6 @@ def configure_optimizers(net, args):
         if n.endswith(".quantiles") and p.requires_grad
     }
 
-    print("dio porco: ",len(aux_parameters))
-    print("zio porco: ",aux_parameters)
 
 
 
@@ -89,7 +88,7 @@ def configure_optimizers(net, args):
     )
     return optimizer, aux_optimizer
 
-
+import copy
 
 
 def save_checkpoint(state, is_best, filename,filename_best,very_best):
@@ -107,9 +106,14 @@ def save_checkpoint(state, is_best, filename,filename_best,very_best):
 def main(argv):
     args = parse_args(argv)
     print(args)
-    if args.seed is not None:
-        torch.manual_seed(args.seed)
-        random.seed(args.seed)
+
+
+    #torch.autograd.set_detect_anomaly(True)
+
+    set_seed(args.seed)
+    #if args.seed is not None:
+        #torch.manual_seed(args.seed)
+        #random.seed(args.seed)
 
     train_transforms = transforms.Compose(
         [transforms.RandomCrop(args.patch_size), transforms.ToTensor()]
@@ -153,14 +157,16 @@ def main(argv):
 
 
     
-    net = models[args.model]( N = args.N,
+    net = models[args.model](N = args.N,
                              M = args.M,
-                            scalable_levels = args.scalable_levels, 
                               mask_policy = args.mask_policy,
                               lmbda_list = lmbda_list,
                               lrp_prog = args.lrp_prog,
-                              independent_lrp = args.ind_lrp
+                              independent_lrp = args.ind_lrp,
+                              list_percentile = args.list_percentile
                              )
+
+
     net = net.to(device)
 
     if args.cuda and torch.cuda.device_count() > 1:
@@ -173,13 +179,21 @@ def main(argv):
         print("Loading", args.checkpoint)
         checkpoint = torch.load(args.checkpoint, map_location=device)
         last_epoch = 0 # checkpoint["epoch"] + 1
+        #net.update()
+
+        #lista = list(checkpoint.keys())
+        #for l in lista:
+        #    print(l)
+        #net.load_state_dict(checkpoint["state_dict"],strict = False)
+        net.load_state_dict(checkpoint,strict = False)
         net.update()
-        net.load_state_dict(checkpoint)
         
     optimizer, aux_optimizer = configure_optimizers(net, args)
     lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, "min", factor=0.3, patience=4)
-    criterion = ScalableRateDistortionLoss(lmbda_list=args.lmbda_list)
 
+
+
+    criterion = ScalableRateDistortionLoss(lmbda_list=args.lmbda_list, frozen_base = args.frozen_base)
 
     if args.checkpoint != "none" and args.continue_training:    
         print("conitnuo il training!")
@@ -190,22 +204,33 @@ def main(argv):
     
 
 
-    if args.freeze:
+    if args.frozen_base:
         print("entro su freezer!")
         net.freezer()
+
+
+
+
+
 
     best_loss = float("inf")
     counter = 0
     epoch_enc = 0
+    #net.freezer()
 
     for epoch in range(last_epoch, args.epochs):
-        print("******************************************************")
+        print("******************************************************") #ffffff
         print("epoch: ",epoch)
         start = time.time()
         #print(f"Learning rate: {optimizer.param_groups[0]['lr']}")
         num_tainable = net.print_information()
+        #num_tainable = 1
         if num_tainable > 0:
             counter = train_one_epoch( net, criterion, train_dataloader, optimizer, aux_optimizer, epoch, counter)
+        
+
+
+
             
         print("finito il train della epoca")
         loss = valid_epoch(epoch, valid_dataloader,criterion, net, pr_list = net.lmbda_list)
@@ -221,9 +246,12 @@ def main(argv):
         best_loss = min(loss, best_loss)
 
         if epoch%5==0 or is_best:
-            net.update()
 
-            bpp, psnr = compress_with_ac(net,  filelist, device, epoch = epoch_enc, pr_list = net.lmbda_list,   writing = None)
+            model_cop = copy.deepcopy(net)
+            model_cop.update()
+
+            bpp, psnr = compress_with_ac(model_cop,  filelist, device, epoch = epoch_enc, pr_list = model_cop.lmbda_list,   writing = None)
+            print("total: ",bpp,"  ",psnr)
             psnr_res = {}
             bpp_res = {}
 
@@ -242,8 +270,8 @@ def main(argv):
             check = "pret"
         else:
             check = "zero"
-        # creating savepath
-        name_folder = check + "_" + "_" + str(args.scalable_levels) + "_" + args.model + "_" + args.mask_policy + "_" + str(args.M) + "_" + str(args.N)  + "_" + str(args.lmbda_list[0]) + "_" + str(args.lmbda_list[-1]) +"_" + str(args.freeze) 
+
+        name_folder = check + "_" + "_multi_" + str(len(args.lmbda_list)) + "_" + args.model + "_" + args.mask_policy + "_" + str(args.M) + "_" + str(args.frozen_base)  + "_" + str(args.lmbda_list[0]) + "_" + str(args.lmbda_list[-1]) 
         cartella = os.path.join(args.save_path,name_folder)
 
 
@@ -261,7 +289,7 @@ def main(argv):
 
         if (is_best is True and epoch > 10) or epoch%10==0: #args.save:
             print("io qua devo entrare però!!!")
-            net.update()
+
             save_checkpoint(
                 {
                     "epoch": epoch,
@@ -286,6 +314,8 @@ def main(argv):
         #"train/beta": annealing_strategy_gaussian.bet
         }
 
+        wandb.log(log_dict)
+
 
 
         end = time.time()
@@ -296,5 +326,5 @@ def main(argv):
 
 if __name__ == "__main__":
     #Enhanced-imagecompression-adapter-sketch
-    wandb.init(project="ResDSIC-zero-one", entity="albipresta")   
+    wandb.init(project="ResDSIC-MultiLevel", entity="albipresta")   
     main(sys.argv[1:])

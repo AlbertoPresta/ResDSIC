@@ -46,8 +46,8 @@ def train_one_epoch(model, criterion, train_dataloader, optimizer, aux_optimizer
         aux_optimizer.step()
 
 
-        if clip_max_norm > 0:
-            torch.nn.utils.clip_grad_norm_(model.parameters(), clip_max_norm)
+
+        torch.nn.utils.clip_grad_norm_(model.parameters(), clip_max_norm)
         optimizer.step()
 
 
@@ -137,7 +137,7 @@ def valid_epoch(epoch, test_dataloader,criterion, model, pr_list = [0.05, 0.04, 
 
             for _,p in enumerate(pr_list):
                 
-                out_net = model(d, quality = p)
+                out_net = model(d, quality = p, training = False)
 
   
                 out_criterion = criterion(out_net, d, lmbda = p)
@@ -181,7 +181,7 @@ def test_epoch(epoch, test_dataloader,criterion, model, pr_list = [0.05, 0.04, 0
             for j,p in enumerate(pr_list):
 
                 
-                out_net = model(d,  p)
+                out_net = model(d, quality =  p,training = False)
 
   
                 out_criterion = criterion(out_net, d, lmbda = p)
@@ -213,7 +213,7 @@ def test_epoch(epoch, test_dataloader,criterion, model, pr_list = [0.05, 0.04, 0
     return [bpp_loss[i].avg for i in range(len(bpp_loss))], [psnr[i].avg for i in range(len(psnr))]
 
 
-def compress_with_ac(model,  filelist, device, epoch, pr_list = [0.05,0.04,0.03,0.02,0.01],   writing = None):
+def compress_with_ac(model,  filelist, device, epoch, pr_list,   writing = None):
     #pr_list = [0] + pr_list + [-1]
     #model.update(None, device)
     l = len(pr_list)
@@ -224,7 +224,7 @@ def compress_with_ac(model,  filelist, device, epoch, pr_list = [0.05,0.04,0.03,
 
     with torch.no_grad():
         for i,d in enumerate(filelist):
-            #print("------------------------------ IMAGE ----> ",d) 
+            print("******************************* image ",d," ***************************************") 
 
 
 
@@ -258,7 +258,13 @@ def compress_with_ac(model,  filelist, device, epoch, pr_list = [0.05,0.04,0.03,
                 data_string = data["strings"][:2]
                 bpp = sum(len(s[0]) for s in data_string) * 8.0 / num_pixels
 
-                if model.lmbda_index_list[p] != 0:
+
+                if p in list(model.lmbda_index_list.keys()):
+                    q = model.lmbda_index_list[p] 
+                else:
+                    q = p
+
+                if q != 0:
                     data_string_hype = data["strings"][2]
                     bpp_hype = sum(len(s) for s in data_string_hype) * 8.0 / num_pixels
 
@@ -269,6 +275,9 @@ def compress_with_ac(model,  filelist, device, epoch, pr_list = [0.05,0.04,0.03,
                     bpp += bpp_hype
 
                 bpp_loss[j].update(bpp)
+
+                
+                #print("quality: ",p," ",bpp," ",psnr_im)
 
                 if writing is not None:
                     fls = writing + "/" +  name + "/_" +  str(epoch) +  "_.txt"
@@ -283,7 +292,7 @@ def compress_with_ac(model,  filelist, device, epoch, pr_list = [0.05,0.04,0.03,
             elif i == len(pr_list) - 1:
                 name = "compress_complete"
             else:
-                c = str(model.lmbda_index_list[pr_list[i]])
+                c = str(i)
                 name = "compress_quality_" + c
             
             log_dict = {
@@ -301,4 +310,7 @@ def compress_with_ac(model,  filelist, device, epoch, pr_list = [0.05,0.04,0.03,
         fls = writing + "/" +  name + "/_" +  str(epoch) +  "_.txt"
         f=open(fls , "a+")
         f.write("SEQUENCE "  +   "AVG " + "BITS " +  str(bpp_loss.avg) + " YPSNR " +  str(psnr.avg)  + " YMSSIM " +  str(mssim.avg) + "\n")
+    
+    
+    
     return [bpp_loss[i].avg for i in range(len(bpp_loss))], [psnr[i].avg for i in range(len(psnr))]

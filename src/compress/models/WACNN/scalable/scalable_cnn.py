@@ -20,8 +20,7 @@ def get_scale_table(min=SCALES_MIN, max=SCALES_MAX, levels=SCALES_LEVELS):
 
 
 
-class ResWACNNSharedEntropy(WACNN):
-    pass
+
 
 class ResWACNN(WACNN):
     """CNN based model"""

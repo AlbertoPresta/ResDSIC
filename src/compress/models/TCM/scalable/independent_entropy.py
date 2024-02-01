@@ -3,11 +3,12 @@ import torch
 import torch.nn as nn
 
 from compressai.ans import BufferedRansEncoder, RansDecoder
-
-from ..utils import conv
+from compress.entropy_models import EntropyBottleneck, GaussianConditional #fff
+from compress.layers import GDN
+from ..utils import conv, deconv, update_registered_buffers
 from compress.ops import ste_round
-from compress.layers import conv3x3, subpel_conv3x3
-from .shared_entropy import ResWACNNSharedEntropy 
+from compress.layers import conv3x3, subpel_conv3x3, Win_noShift_Attention
+from .tcm_shared_entropy import ResWACNNSharedEntropy 
 # From Balle's tensorflow compression examples
 SCALES_MIN = 0.11
 SCALES_MAX = 256
@@ -19,22 +20,21 @@ def get_scale_table(min=SCALES_MIN, max=SCALES_MAX, levels=SCALES_LEVELS):
 
 
 class ResWACNNIndependentEntropy(ResWACNNSharedEntropy):
-    def __init__(self, 
-                 N=192,
+    def __init__(self, N=192,
                 M=320,
+                scalable_levels = 4,
                 mask_policy = "learnable-mask",
                 lmbda_list = None,
+                lmbda_starter = 0.075,
                 lrp_prog = True,
                 independent_lrp = False,
-                list_percentile = None,
                 **kwargs):
         super().__init__(N = N, 
                          M = M,
+                         scalable_levels=scalable_levels,
                          mask_policy=mask_policy,
                          lmbda_list=lmbda_list,
-                         lrp_prog=lrp_prog,
-                         independent_lrp=independent_lrp,
-                         list_percentile = list_percentile,
+                         lmbda_starter=lmbda_starter,
                           **kwargs)
 
 
@@ -103,9 +103,28 @@ class ResWACNNIndependentEntropy(ResWACNNSharedEntropy):
             )
         
 
-        
+        self.independent_lrp = independent_lrp 
 
+        if self.independent_lrp:
+            self.lrp_transforms_prog = nn.ModuleList(
+                nn.Sequential(
+                    conv(320 + 32 * min(i+1, 6), 224, stride=1, kernel_size=3),
+                    nn.GELU(),
+                    conv(224, 176, stride=1, kernel_size=3),
+                    nn.GELU(),
+                    conv(176, 128, stride=1, kernel_size=3),
+                    nn.GELU(),
+                    conv(128, 64, stride=1, kernel_size=3),
+                    nn.GELU(),
+                    conv(64, 32, stride=1, kernel_size=3),
+                ) for i in range(10)
+            )
 
+        self.lrp_prog = lrp_prog
+        self.entropy_bottleneck = EntropyBottleneck(self.N)
+        self.entropy_bottleneck_prog = EntropyBottleneck(self.N) #utilizzo lo stesso modello, ma non lo stesso entropy bottleneck
+        self.gaussian_conditional = GaussianConditional(None)
+        self.gaussian_conditional_prog = GaussianConditional(None)
 
 
 
@@ -158,6 +177,7 @@ class ResWACNNIndependentEntropy(ResWACNNSharedEntropy):
         print("DUE")
         self.entropy_bottleneck.update()
         return updated
+        
 
     def extract_mu_and_scale(self,mean_support, scale_support,slice_index,y_shape, prog = False ):
 
@@ -181,35 +201,58 @@ class ResWACNNIndependentEntropy(ResWACNNSharedEntropy):
 
              
 
-    def freezer(self ):
+    def freezer(self):
+
+        for p in self.parameters():
+            p.requires_grad = False 
+        for _,p in self.named_parameters():
+            p.requires_grad = False
         
-        for p in self.g_a.parameters():
-            p.requires_grad = False 
-        for p in self.h_a.parameters():
-            p.requires_grad = False 
-        for p in self.h_mean_s.parameters():
-            p.requires_grad = False 
-        for p in self.h_scale_s.parameters():
-            p.requires_grad = False 
+        if self.mask_policy in  ("all-one","two-levels","learnable-mask"):
 
+            for p in self.g_a_progressive.parameters():
+                p.requires_grad = True
             
-        for m in self.cc_mean_transforms:
-            for p in m.parameters():
-                p.requires_grad = False 
-            
-        for m in self.cc_scale_transforms:
-            for p in m.parameters():
-                p.requires_grad = False
+            for p in self.entropy_bottleneck_prog.parameters():
+                p.requires_grad = True 
+            for _,p in self.entropy_bottleneck_prog.named_parameters():
+                p.requires_grad = True
 
-        for m in self.lrp_transforms:
-            for p in m.parameters():
-                p.requires_grad = False
-            
+            for p in self.entropy_bottleneck.parameters():
+                p.requires_grad = True 
+            for _,p in self.entropy_bottleneck.named_parameters():
+                p.requires_grad = True
 
-           
+
+
+
+            for p in self.h_a_prog.parameters():
+                p.requires_grad = True 
+
+            for p in self.h_mean_s_prog.parameters():
+                p.requires_grad = True 
+
+            for p in self.h_scale_s_prog.parameters():
+                p.requires_grad = True 
+
+            for module in self.cc_mean_transforms_prog:
+                for p in module.parameters():
+                    p.requires_grad = True 
+
+            for module in self.cc_scale_transforms_prog:
+                for p in module.parameters():
+                    p.requires_grad = True 
+
+
+            for p in self.g_s.parameters():
+                p.requires_grad = True 
+            
+            if self.lrp_prog:
+                for p in self.lrp_transforms.parameters():
+                    p.requires_grad = True             
 
     # provo a tenere tutti insieme! poi vediamo 
-    def forward(self, x, quality =None, training = True):
+    def forward(self, x, quality = None):
 
         y_base= self.split_ga(x)
         y = self.split_ga(y_base,begin = False)
@@ -254,24 +297,16 @@ class ResWACNNIndependentEntropy(ResWACNNSharedEntropy):
         y_hats = []
         
         for j,p in enumerate(list_quality): 
-
-            if p in list(self.lmbda_index_list.keys()):
-                quality = self.lmbda_index_list[p]
-            else: 
-                quality = p
-
-            
-            mask = self.extract_mask(latent_scales,scale_prog = scales_prog, pr =quality)
+            mask = self.extract_mask(latent_scales,pr = p)
             if self.mask_policy == "learnable-mask": # and self.lmbda_index_list[p]!=0 and self.lmbda_index_list[p]!=len(self.lmbda_list) -1:
-                if training:
+                if self.training:
                     samples = mask + (torch.rand_like(mask) - 0.5)
                     mask = samples + samples.round().detach() - samples.detach()  # Differentiable torch.round()   
                 else:
                     mask = torch.round(mask)
                         
             y_progressive_slices = y_progressive.chunk(self.num_slices,dim = 1)
-            mask_slices = mask.chunk(self.num_slices,dim = 1)
-            
+            #mask_slices = mask.chunk(self.num_slices,dim = 1)
             y_hat_slices = []
             y_hat_complete = []
             y_hat_prog = []
@@ -306,9 +341,9 @@ class ResWACNNIndependentEntropy(ResWACNNSharedEntropy):
                 #############################################################
                 #######################   TOCCA ALLA PARTE PROGRESSIVE ######
                 ############################################################
-                if  quality != 0:
+                if  self.lmbda_index_list[p] != 0:
                     y_prog_slice = y_progressive_slices[slice_index]
-                    block_mask = mask_slices[slice_index]
+                    #block_mask = mask_slices[slice_index]
                     support_prog_slices = (y_hat_prog if self.max_support_slices < 0 else y_hat_prog[:self.max_support_slices])
 
 
@@ -322,12 +357,14 @@ class ResWACNNIndependentEntropy(ResWACNNSharedEntropy):
                                                                    prog = True
                                                                     )
 
-                    _, y_slice_likelihood_prog = self.gaussian_conditional_prog(y_prog_slice, scale_prog,mu_prog, mask = block_mask)
-                    #_, y_slice_likelihood_prog = self.gaussian_conditional_prog(y_prog_slice, scale_prog,mu_prog)
+                    #y_prog_slice_m = y_prog_slice  - mu_prog 
+                    
+                    #y_prog_slice_m = y_prog_slice_m#*block_mask
+                    _, y_slice_likelihood_prog = self.gaussian_conditional_prog(y_prog_slice, scale_prog,mu_prog)
 
                     y_likelihood_prog.append(y_slice_likelihood_prog)
 
-                    y_hat_prog_slice = ste_round(y_prog_slice - mu_prog)*block_mask + mu_prog
+                    y_hat_prog_slice = ste_round(y_prog_slice - mu_prog) + mu_prog
 
                     if self.lrp_prog:
                         lrp_support = torch.cat([mean_support_prog, y_hat_prog_slice], dim=1)
@@ -345,8 +382,13 @@ class ResWACNNIndependentEntropy(ResWACNNSharedEntropy):
                 else:
                     y_hat_complete.append(y_hat_slice)
 
+
+
+
             y_hat_q = torch.cat(y_hat_complete,dim = 1) #questo va preso 
             x_hat_q = self.g_s(y_hat_q) 
+
+
 
             y_hats.append(y_hat_q.unsqueeze(0))
             x_hat_progressive.append(x_hat_q.unsqueeze(0)) 
@@ -410,12 +452,7 @@ class ResWACNNIndependentEntropy(ResWACNNSharedEntropy):
         y_strings = []
 
 
-        if quality in list(self.lmbda_index_list.keys()):
-            q = self.lmbda_index_list[quality] 
-        else:
-            q = quality
-
-        if q != 0:
+        if self.lmbda_index_list[quality] != 0:
 
 
             z_prog = self.h_a_prog(y_progressive)
@@ -426,13 +463,21 @@ class ResWACNNIndependentEntropy(ResWACNNSharedEntropy):
             latent_scales_prog = self.h_scale_s_prog(z_hat_prog)
             latent_means_prog = self.h_mean_s_prog(z_hat_prog)
 
-            mask = self.extract_mask(latent_scales,scale_prog = latent_scales_prog, pr =q)
+            mask = self.extract_mask(latent_scales,pr = quality)
             mask = torch.round(mask)
             mask_slices = mask.chunk(self.num_slices,dim = 1)
 
             progressive_strings = []
 
 
+            #cdf_prog = self.gaussian_conditional_prog.quantized_cdf.tolist()
+            #cdf_lengths_prog = self.gaussian_conditional_prog.cdf_length.reshape(-1).int().tolist()
+            #offsets_prog = self.gaussian_conditional_prog.offset.reshape(-1).int().tolist()
+            #encoder_prog = BufferedRansEncoder()
+
+            #symbols_list_prog = []
+            #indexes_list_prog = []
+            #y_strings_prog = []
 
 
         y_slices = y.chunk(self.num_slices, 1)
@@ -465,7 +510,7 @@ class ResWACNNIndependentEntropy(ResWACNNSharedEntropy):
             y_hat_slices.append(y_hat_slice)
 
             # now progressive
-            if q != 0:
+            if self.lmbda_index_list[quality] != 0:
 
                 block_mask = mask_slices[slice_index]
                 support_slices_prog = (y_hat_prog if self.max_support_slices < 0 else y_hat_prog[:self.max_support_slices])
@@ -481,15 +526,17 @@ class ResWACNNIndependentEntropy(ResWACNNSharedEntropy):
                                                                 prog = True)
 
 
-                index_prog = self.gaussian_conditional_prog.build_indexes(scale_prog*block_mask) #saràda aggiungere la maschera
-                index_prog = index_prog.int()
+                index_prog = self.gaussian_conditional_prog.build_indexes(scale_prog) #saràda aggiungere la maschera
+                #y_q_slice_prog = torch.round(y_slice_prog - mu_prog) + mu_prog
+                #y_q_slice_prog = self.gaussian_conditional_prog.quantize(y_slice_prog, "symbols", mu_prog)
+                #y_hat_slice_prog = y_q_slice_prog + mu_prog
 
-                y_q_slice_prog = y_slice_prog - mu_prog 
-                y_q_slice_prog = y_q_slice_prog*block_mask
-                y_q_string  = self.gaussian_conditional_prog.compress(y_q_slice_prog, index_prog)
-                y_hat_slice_prog = self.gaussian_conditional_prog.decompress(y_q_string, index_prog)
-
-                y_hat_slice_prog = y_hat_slice_prog + mu_prog
+                #symbols_list_prog.extend(y_q_slice.reshape(-1).tolist())
+                #indexes_list_prog.extend(index_prog.reshape(-1).tolist())
+                #y_q_slice_prog = y_slice_prog - mu_prog 
+                #y_q_prog_slice = y_q_prog_slice#*block_mask
+                y_q_string  = self.gaussian_conditional_prog.compress(y_slice_prog, index_prog, means=mu_prog)
+                y_hat_slice_prog = self.gaussian_conditional_prog.decompress(y_q_string, index_prog, means= mu_prog)
 
                 progressive_strings.append(y_q_string)
 
@@ -498,7 +545,7 @@ class ResWACNNIndependentEntropy(ResWACNNSharedEntropy):
                     if self.independent_lrp:
                         lrp = self.lrp_transforms_prog[slice_index](lrp_support)
                     else:
-                        lrp = self.lrp_transforms[slice_index](lrp_support) ##dddd
+                        lrp = self.lrp_transforms[slice_index](lrp_support)
                     lrp = 0.5 * torch.tanh(lrp)
                     y_hat_slice_prog += lrp
 
@@ -510,8 +557,11 @@ class ResWACNNIndependentEntropy(ResWACNNSharedEntropy):
         y_string = encoder.flush()
         y_strings.append(y_string)
 
-        if q == 0:
+        if self.lmbda_index_list[quality] == 0:
             return {"strings": [y_strings, z_strings], "shape": [z.size()[-2:]]}
+    
+
+        
     
         
         #encoder_prog.encode_with_indexes(symbols_list_prog, indexes_list_prog, cdf_prog, cdf_lengths_prog, offsets_prog)
@@ -519,17 +569,14 @@ class ResWACNNIndependentEntropy(ResWACNNSharedEntropy):
         #y_strings_prog.append(y_string_prog)
         #print("finito encoding")
         
+
+
         return {"strings": [y_strings, z_strings, z_string_prog,progressive_strings],  #preogressive_strings
                 "shape": [z.size()[-2:],z_prog.size()[-2:]],          
                 }
     
 
     def decompress(self, strings, shape, quality):
-
-        if quality in list(self.lmbda_index_list.keys()):
-            q = self.lmbda_index_list[quality] 
-        else:
-            q = quality
 
         z_hat = self.entropy_bottleneck.decompress(strings[1], shape[0])
 
@@ -548,7 +595,7 @@ class ResWACNNIndependentEntropy(ResWACNNSharedEntropy):
         decoder.set_stream(y_string)
 
 
-        if q != 0:
+        if self.lmbda_index_list[quality] != 0:
 
             z_hat_prog =  self.entropy_bottleneck_prog.decompress(strings[2],shape[-1])#strings[-1]  #self.entropy_bottleneck.decompress(strings[-1],shape[-1])
             
@@ -559,14 +606,24 @@ class ResWACNNIndependentEntropy(ResWACNNSharedEntropy):
             #y_string_prog = strings[2][0]
 
 
-            mask = self.extract_mask(latent_scales,scale_prog = latent_scales_prog, pr =q)
+            mask = self.extract_mask(latent_scales,pr = quality)
             mask = torch.round(mask)
             mask_slices = mask.chunk(self.num_slices,dim = 1)
+
+
+            #cdf_prog = self.gaussian_conditional_prog.quantized_cdf.tolist()
+            #cdf_lengths_prog = self.gaussian_conditional_prog.cdf_length.reshape(-1).int().tolist()
+            #offsets_prog = self.gaussian_conditional_prog.offset.reshape(-1).int().tolist()
+            #decoder_prog = RansDecoder()
+            #decoder_prog.set_stream(y_string_prog)
+
+
 
         y_hat_slices = []
         y_hat_prog = []
         y_hat_complete = []
-               
+        
+        
         for slice_index in range(self.num_slices):
 
            
@@ -592,11 +649,11 @@ class ResWACNNIndependentEntropy(ResWACNNSharedEntropy):
             y_hat_slices.append(y_hat_slice)
 
 
-            if q != 0:
-
+            if self.lmbda_index_list[quality] != 0:
+       
                 support_slices_prog = (y_hat_prog if self.max_support_slices < 0 else y_hat_prog[:self.max_support_slices])
                 
-                block_mask = mask_slices[slice_index]
+                
                 #[latent_means] + support_slices
                 mean_support_prog = torch.cat([latent_means_prog] + support_slices_prog, dim=1)
                 scale_support_prog = torch.cat([latent_scales_prog] + support_slices_prog, dim=1)
@@ -607,8 +664,8 @@ class ResWACNNIndependentEntropy(ResWACNNSharedEntropy):
                                                                  prog = True
                                                                  )
 
-                index_prog = self.gaussian_conditional_prog.build_indexes(scale_prog*block_mask)
-                index_prog = index_prog.int()
+                index_prog = self.gaussian_conditional_prog.build_indexes(scale_prog)
+                #index_prog = index_prog.int()
 
 
                 #rv_prog = decoder_prog.decode_stream(index_prog.reshape(-1).tolist(), cdf_prog, cdf_lengths_prog, offsets_prog)

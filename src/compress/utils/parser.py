@@ -34,12 +34,15 @@ def parse_args(argv):
         default=8,
         help="Dataloaders threads (default: %(default)s)",
     )
-    parser.add_argument("--lambda_starter",dest="lmbda_starter",type=float,default=0.075,help="biggest lagrangian parameter",)
 
-    parser.add_argument("--lambda_list",dest="lmbda_list", nargs='+', type=float, default = [0.0035, 0.065])
+
+    parser.add_argument("--seed", type=float,default = 42, help="Set random seed for reproducibility")
+
+    parser.add_argument("--lambda_list",dest="lmbda_list", nargs='+', type=float, default = [0.0018,0.0036,0.0075,0.013,0.025, 0.05])
+    parser.add_argument("--list_percentile", nargs='+', type=float, default = None )
     parser.add_argument( "--batch_size", type=int, default=16, help="Batch size (default: %(default)s)")
 
-    parser.add_argument("--scalable_levels", type=int, default=2, help="Batch size (default: %(default)s)")
+
 
     parser.add_argument("--num_images", type=int, default=300000, help="Batch size (default: %(default)s)")
 
@@ -47,7 +50,7 @@ def parse_args(argv):
     parser.add_argument("--M", type=int, default=320, help="Batch size (default: %(default)s)")
 
     parser.add_argument("--num_images_val", type=int, default=816, help="Batch size (default: %(default)s)")
-    parser.add_argument("--mask_policy", type=str, default="two-levels", help="Batch size (default: %(default)s)")
+    parser.add_argument("--mask_policy", type=str, default="learnable-mask", help="Batch size (default: %(default)s)")
     parser.add_argument(
         "--valid_batch_size",
         type=int,
@@ -75,18 +78,18 @@ def parse_args(argv):
     )
     parser.add_argument("--cuda", action="store_true", help="Use cuda")
     parser.add_argument("--freeze", action="store_true", help="Use cuda")
-    parser.add_argument(
-        "--save", action="store_true", default=True, help="Save model to disk"
-    )
+
+
+
+    parser.add_argument("--frozen_base", action="store_true", help="Use cuda")
+    parser.add_argument("--save", action="store_true", default=True, help="Save model to disk")
 
     parser.add_argument("--lrp_prog", action="store_true", help="use common lrp for progressive")
     parser.add_argument("--ind_lrp", action="store_true", help="use common lrp for progressive")
     parser.add_argument("--continue_training", action="store_true", help="continue training of the checkpoint")
     parser.add_argument("--save_path", type=str, default="/scratch/ResDSIC/models/", help="Where to Save model")
-    parser.add_argument(
-        "--seed", type=float, help="Set random seed for reproducibility"
-    )
+
     parser.add_argument("--clip_max_norm",default=1.0,type=float,help="gradient clipping max norm (default: %(default)s",)
-    parser.add_argument("--checkpoint", type=str, default = "none",help="Path to a checkpoint") #"/scratch/universal-dic/weights/q2/model.pth"
+    parser.add_argument("--checkpoint", type=str, default = "/scratch/universal-dic/weights/q1/model.pth",help="Path to a checkpoint") #"/scratch/universal-dic/weights/q2/model.pth"
     args = parser.parse_args(argv)
     return args

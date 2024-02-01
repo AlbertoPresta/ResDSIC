@@ -6,7 +6,7 @@ from torch.nn.functional import mse_loss
 class RateDistortionLoss(nn.Module):
     """Custom rate distortion loss with a Lagrangian parameter."""
 
-    def __init__(self, lmbda=1e-2):
+    def __init__(self, lmbda=0.05):
         super().__init__()
         self.mse = nn.MSELoss()
         self.lmbda = lmbda
@@ -27,11 +27,12 @@ class RateDistortionLoss(nn.Module):
 
 class ScalableRateDistortionLoss(nn.Module):
 
-    def __init__(self, weight = 255**2, lmbda_list = [0.75],  device = "cuda"):
+    def __init__(self, weight = 255**2, lmbda_list = [0.75],  device = "cuda", frozen_base = False):
         super().__init__()
         self.scalable_levels = len(lmbda_list)
         self.lmbda = torch.tensor(lmbda_list).to(device) 
         self.weight = weight
+        self.frozen_base = frozen_base
 
         
 
@@ -80,17 +81,13 @@ class ScalableRateDistortionLoss(nn.Module):
         out["bpp_base"]= (torch.log(likelihoods["y"].squeeze(0)).sum() + torch.log(likelihoods["z"]).sum())/denominator
         out["bpp_scalable"] = (torch.log(likelihoods["y_prog"]).sum() + torch.log(likelihoods["z_prog"]).sum())/denominator 
 
-        #out["bpp_scalable"] = torch.zeros_like(out["bpp_base"]).to(out["bpp_base"].device)#
-        #prova = torch.log(likelihoods["y_prog"][0]).sum()/denominator
-        #print("questo numero dovrebbe essere 2: ",batch_size_recon)
-
-        out["bpp_loss"] = out["bpp_scalable"] + batch_size_recon*out["bpp_base"]
-        #out["bpp_loss"] = out["bpp_scalable"] + out["bpp_base"]
-
-        #out["bpp_loss"] = out["bpp_base"]
 
 
-        #self.lmbda = self.lmbda.to(out["mse_loss"].device) 
+        if self.frozen_base is False:
+            out["bpp_loss"] = out["bpp_scalable"] + batch_size_recon*out["bpp_base"]
+        else:
+            out["bpp_loss"] = out["bpp_scalable"] 
+
 
 
 

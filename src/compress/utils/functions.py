@@ -37,7 +37,7 @@ class AverageMeter:
 def create_savepath(args,epoch,base_path):
     now = datetime.now()
     date_time = now.strftime("%m%d")
-    c = join(date_time,"_lambda_",str(args.lmbda_starter),"_epoch_",str(epoch)).replace("/","_")
+    c = join(date_time,"_epoch_",str(epoch)).replace("/","_")
 
     
     c_best = join(c,"best").replace("/","_")
@@ -56,7 +56,13 @@ def create_savepath(args,epoch,base_path):
 
 
 
-
+import numpy as np
+def set_seed(seed=123):
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    torch.backends.cudnn.deterministic = True
+    np.random.seed(seed)
 
 
 

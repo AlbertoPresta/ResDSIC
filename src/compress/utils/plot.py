@@ -22,7 +22,6 @@ def plot_rate_distorsion(bpp_res, psnr_res,epoch):
 
     legenda["our"]["colore"] = [palette[3],'-']
     legenda["our"]["legends"] = "proposed"
-    print("la lunghezza è questa----> ",len(psnr_res["our"]))
     legenda["our"]["symbols"] = ["*"]*len(psnr_res["our"])
     legenda["our"]["markersize"] = [5]*len(psnr_res["our"])
 
@@ -31,10 +30,8 @@ def plot_rate_distorsion(bpp_res, psnr_res,epoch):
 
     list_names = list(bpp_res.keys()) #[base our]
 
-    if epoch < 5:
-        list_names = ["our"]
-    else:
-        list_names = list(bpp_res.keys())
+
+    list_names = list(bpp_res.keys())
 
     minimo_bpp, minimo_psnr = 10000,1000
     massimo_bpp, massimo_psnr = 0,0
@@ -48,6 +45,7 @@ def plot_rate_distorsion(bpp_res, psnr_res,epoch):
         markersize = legenda[type_name]["markersize"]
         leg = legenda[type_name]["legends"]
 
+        print("zio cane: ",len(colore),len(leg)," ",len(bpp)," ",len(psnr))
     
         plt.plot(bpp,psnr,"-" ,color = colore, label =  leg ,markersize=7)
         #for x, y, marker, markersize_t in zip(bpp, psnr, symbols, markersize):

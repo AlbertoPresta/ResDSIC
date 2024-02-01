@@ -1,6 +1,6 @@
 import torch.nn as nn
 
-from compressai.entropy_models import EntropyBottleneck, GaussianConditional
+from compressai.entropy_models import EntropyBottleneck
 from .utils import update_registered_buffers
 
 class CompressionModel(nn.Module):
@@ -59,27 +59,13 @@ class CompressionModel(nn.Module):
         return updated
 
     def load_state_dict(self, state_dict, strict=True):
-        for name, module in self.named_modules():
-            if not any(x.startswith(name) for x in state_dict.keys()):
-                continue
-            
-            """
-            if isinstance(module, EntropyBottleneck):
-                update_registered_buffers(
-                    module,
-                    name,
-                    ["_quantized_cdf", "_offset", "_cdf_length"],
-                    state_dict,
-                )
+        # Dynamically update the entropy bottleneck buffers related to the CDFs
+        update_registered_buffers(
+            self.entropy_bottleneck,
+            "entropy_bottleneck",
+            ["_quantized_cdf", "_offset", "_cdf_length"],
+            state_dict,
+        )
 
-            if isinstance(module, GaussianConditional):
-                update_registered_buffers(
-                    module,
-                    name,
-                    ["_quantized_cdf", "_offset", "_cdf_length", "scale_table"],
-                    state_dict,
-                )
-            """
-
-        return nn.Module.load_state_dict(self, state_dict, strict=strict)
+        return nn.Module.load_state_dict(self, state_dict, strict=False)
 

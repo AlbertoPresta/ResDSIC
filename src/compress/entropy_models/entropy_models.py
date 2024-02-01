@@ -202,7 +202,7 @@ class EntropyModel(nn.Module):
         if len(self._cdf_length.size()) != 1:
             raise ValueError(f"Invalid offsets size {self._cdf_length.size()}")
 
-    def compress(self, inputs, indexes, means=None, flag=1):
+    def compress(self, inputs, indexes, means=None, mask = None, flag=1):
         """
         Compress input tensors to char strings.
 
@@ -212,6 +212,11 @@ class EntropyModel(nn.Module):
             means (torch.Tensor, optional): optional tensor means
         """
         symbols = self.quantize(inputs, "symbols", means)
+        if mask is not None: 
+            symbols = symbols*mask 
+            symbols = symbols.int()
+
+
 
         if len(inputs.size()) < 2:
             raise ValueError(
@@ -445,8 +450,7 @@ class EntropyBottleneck(EntropyModel):
                     print('q:',self.quantiles[i][0][0],self.quantiles[i][0][2])
 
     def forward(
-        self, x: Tensor, training: Optional[bool] = None
-    ) -> Tuple[Tensor, Tensor]:
+        self, x: Tensor, training: Optional[bool] = None, mask: Optional[Tensor] = None) -> Tuple[Tensor, Tensor]:
         if training is None:
             training = self.training
 
@@ -653,6 +657,12 @@ class GaussianConditional(EntropyModel):
     ) -> Tuple[Tensor, Tensor]:
         if training is None:
             training = self.training
+
+        if mask is not None: 
+            inputs = inputs*mask
+            scales = scales*mask
+
+
         outputs = self.quantize(inputs, "noise" if training else "dequantize", means, mask = mask)
         likelihood = self._likelihood(outputs, scales, means)
         if self.use_likelihood_bound:
