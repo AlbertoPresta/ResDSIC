@@ -38,8 +38,8 @@ def parse_args(argv):
 
     parser.add_argument("--seed", type=float,default = 42, help="Set random seed for reproducibility")
 
-    parser.add_argument("--lambda_list",dest="lmbda_list", nargs='+', type=float, default = [0.0018,0.0036,0.0075,0.013,0.025, 0.05])
-    parser.add_argument("--list_percentile", nargs='+', type=float, default = None )
+    parser.add_argument("--lambda_list",dest="lmbda_list", nargs='+', type=float, default = [0.0018,0.013])
+    parser.add_argument("--list_percentile", nargs='+', type=float, default = [0,1] )
     parser.add_argument( "--batch_size", type=int, default=16, help="Batch size (default: %(default)s)")
 
 
@@ -50,7 +50,7 @@ def parse_args(argv):
     parser.add_argument("--M", type=int, default=320, help="Batch size (default: %(default)s)")
 
     parser.add_argument("--num_images_val", type=int, default=816, help="Batch size (default: %(default)s)")
-    parser.add_argument("--mask_policy", type=str, default="learnable-mask", help="Batch size (default: %(default)s)")
+    parser.add_argument("--mask_policy", type=str, default="two-levels", help="Batch size (default: %(default)s)")
     parser.add_argument(
         "--valid_batch_size",
         type=int,

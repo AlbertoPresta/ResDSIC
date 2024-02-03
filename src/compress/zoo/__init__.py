@@ -16,6 +16,7 @@
 from compress.models import WACNN,  ResWACNN, ResWACNNSharedEntropy, ResWACNNIndependentEntropy
 
 models = {
+    
     'cnn': WACNN,
     "resWacnn":ResWACNN,
     "shared":ResWACNNSharedEntropy,

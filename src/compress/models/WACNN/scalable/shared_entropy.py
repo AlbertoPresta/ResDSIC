@@ -399,7 +399,7 @@ class ResWACNNSharedEntropy(WACNN):
                 ############################################################
                 if  self.lmbda_index_list[p] != 0:
                     y_prog_slice = y_progressive_slices[slice_index]
-                    block_mask = mask_slices[slice_index]
+                    #block_mask = mask_slices[slice_index]
                     support_prog_slices = (y_hat_prog if self.max_support_slices < 0 else y_hat_prog[:self.max_support_slices])
 
 
