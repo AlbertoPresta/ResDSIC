@@ -13,12 +13,13 @@
 # limitations under the License.
 
 
-from compress.models import WACNN,  ResWACNN, ResWACNNSharedEntropy, ResWACNNIndependentEntropy
+from compress.models import WACNN,  ResWACNN, ResWACNNSharedEntropy, ResWACNNIndependentEntropy, ConditionalWACNN
 
 models = {
     
     'cnn': WACNN,
     "resWacnn":ResWACNN,
     "shared":ResWACNNSharedEntropy,
-    "independent":ResWACNNIndependentEntropy
+    "independent":ResWACNNIndependentEntropy,
+    "conditional":ConditionalWACNN
 }

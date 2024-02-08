@@ -14,7 +14,7 @@ def compute_psnr(a, b):
 def compute_msssim(a, b):
     return ms_ssim(a, b, data_range=1.).item()
 
-
+import random
 def train_one_epoch(model, criterion, train_dataloader, optimizer, aux_optimizer, epoch, counter,clip_max_norm = 1.0):
     model.train()
     device = next(model.parameters()).device
@@ -27,6 +27,7 @@ def train_one_epoch(model, criterion, train_dataloader, optimizer, aux_optimizer
     bpp_main = AverageMeter()
 
 
+    lmbda_list = model.lmbda_list
 
 
     for i, d in enumerate(train_dataloader):
@@ -35,9 +36,12 @@ def train_one_epoch(model, criterion, train_dataloader, optimizer, aux_optimizer
         optimizer.zero_grad()
         aux_optimizer.zero_grad()
 
-        out_net = model(d)
+        quality =  random.randint(0, len(lmbda_list) - 1)
+        lmbda = lmbda_list[quality]
 
-        out_criterion = criterion(out_net, d)
+        out_net = model(d, quality = quality )
+
+        out_criterion = criterion(out_net, d, lmbda = lmbda)
         out_criterion["loss"].backward()
 
 
@@ -137,7 +141,7 @@ def valid_epoch(epoch, test_dataloader,criterion, model, pr_list = [0.05, 0.04, 
 
             for _,p in enumerate(pr_list):
                 
-                out_net = model(d, quality = p, training = False)
+                out_net = model(d, quality = p)
 
   
                 out_criterion = criterion(out_net, d, lmbda = p)
@@ -181,7 +185,7 @@ def test_epoch(epoch, test_dataloader,criterion, model, pr_list = [0.05, 0.04, 0
             for j,p in enumerate(pr_list):
 
                 
-                out_net = model(d, quality =  p,training = False)
+                out_net = model(d, quality =  p)
 
   
                 out_criterion = criterion(out_net, d, lmbda = p)

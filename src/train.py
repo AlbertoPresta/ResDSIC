@@ -103,10 +103,37 @@ def save_checkpoint(state, is_best, filename,filename_best,very_best):
 
 
 
+def configure_model(args,lmbda_list):
+    if args.model == "conditional":
+        net = models[args.model](N = args.N,
+                                M = args.M,
+                                mask_policy = args.mask_policy,
+                                lmbda_list = lmbda_list,
+                                joiner_policy = args.joiner_policy
+                                )
+
+    else:
+        net = models[args.model](N = args.N,
+                                M = args.M,
+                                mask_policy = args.mask_policy,
+                                lmbda_list = lmbda_list,
+                                lrp_prog = args.lrp_prog,
+                                independent_lrp = args.ind_lrp,
+                                list_percentile = args.list_percentile
+                                )
+    return net
+
+
+
 def main(argv):
     args = parse_args(argv)
     print(args)
 
+
+    if args.tester is False:
+        wandb.init(project="ResDSIC-MultiLevel", entity="albipresta")  #dddddd 
+    else:
+        wandb.init(project="ResDSIC-Tester", entity="albipresta")  
 
     #torch.autograd.set_detect_anomaly(True)
 
@@ -156,17 +183,7 @@ def main(argv):
 
 
 
-    
-    net = models[args.model](N = args.N,
-                             M = args.M,
-                              mask_policy = args.mask_policy,
-                              lmbda_list = lmbda_list,
-                              lrp_prog = args.lrp_prog,
-                              independent_lrp = args.ind_lrp,
-                              list_percentile = args.list_percentile
-                             )
-
-
+    net = configure_model(args, lmbda_list)
     net = net.to(device)
 
     if args.cuda and torch.cuda.device_count() > 1:
@@ -184,16 +201,34 @@ def main(argv):
         #lista = list(checkpoint.keys())
         #for l in lista:
         #    print(l)
-        #net.load_state_dict(checkpoint["state_dict"],strict = False)
-        net.load_state_dict(checkpoint,strict = False)
+        del checkpoint["state_dict"]["entropy_bottleneck_prog._offset"]
+        del checkpoint["state_dict"]["entropy_bottleneck_prog._cdf_length"]
+        del checkpoint["state_dict"]["entropy_bottleneck._offset"]
+        del checkpoint["state_dict"]["entropy_bottleneck._cdf_length"]
+        del checkpoint["state_dict"]["entropy_bottleneck._quantized_cdf"]
+        del checkpoint["state_dict"]["entropy_bottleneck_prog._quantized_cdf"]
+
+        del checkpoint["state_dict"]["gaussian_conditional_prog._offset"]
+        del checkpoint["state_dict"]["gaussian_conditional_prog._cdf_length"]
+        del checkpoint["state_dict"]["gaussian_conditional._offset"]
+        del checkpoint["state_dict"]["gaussian_conditional._cdf_length"]
+        del checkpoint["state_dict"]["gaussian_conditional._quantized_cdf"]
+        del checkpoint["state_dict"]["gaussian_conditional_prog._quantized_cdf"]
+        del checkpoint["state_dict"]["gaussian_conditional.scale_table"]
+        del checkpoint["state_dict"]["gaussian_conditional_prog.scale_table"]
+
+        net.load_state_dict(checkpoint["state_dict"],strict = True)
+        #net.load_state_dict(checkpoint,strict = False)
         net.update()
         
     optimizer, aux_optimizer = configure_optimizers(net, args)
     lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, "min", factor=0.3, patience=4)
 
 
-
-    criterion = ScalableRateDistortionLoss(lmbda_list=args.lmbda_list, frozen_base = args.frozen_base)
+    if args.model != "conditional":
+        criterion = ScalableRateDistortionLoss(lmbda_list=args.lmbda_list, frozen_base = args.frozen_base)
+    else:
+        criterion = RateDistortionLoss(lmbda=args.lmbda_list[-1])
 
     if args.checkpoint != "none" and args.continue_training:    
         print("conitnuo il training!")
@@ -206,7 +241,7 @@ def main(argv):
 
     if args.frozen_base:
         print("entro su freezer!")
-        net.freezer()
+        net.freezer(total = False)
 
 
 
@@ -217,6 +252,18 @@ def main(argv):
     counter = 0
     epoch_enc = 0
     #net.freezer()
+
+
+
+
+    if args.tester: 
+        net.freezer(total = True)
+        net.print_information()
+        bpp, psnr = compress_with_ac(net,  filelist, device, epoch = 0, pr_list = [0,1],   writing = None)
+        print("*********************************   OVER *********************************************************")
+        return 0
+
+
 
     for epoch in range(last_epoch, args.epochs):
         print("******************************************************") #ffffff
@@ -245,6 +292,8 @@ def main(argv):
         is_best = loss < best_loss
         best_loss = min(loss, best_loss)
 
+
+        """
         if epoch%5==0 or is_best:
 
             model_cop = copy.deepcopy(net)
@@ -263,6 +312,7 @@ def main(argv):
 
             plot_rate_distorsion(bpp_res, psnr_res,epoch_enc)
             epoch_enc += 1
+        """
 
 
 
@@ -326,5 +376,5 @@ def main(argv):
 
 if __name__ == "__main__":
     #Enhanced-imagecompression-adapter-sketch
-    wandb.init(project="ResDSIC-MultiLevel", entity="albipresta")   
+     
     main(sys.argv[1:])

@@ -181,7 +181,12 @@ class ResWACNNIndependentEntropy(ResWACNNSharedEntropy):
 
              
 
-    def freezer(self ):
+    def freezer(self, total = True ):
+
+
+        if total:
+            for p in self.parameters():
+                p.requires_grad = False
         
         for p in self.g_a.parameters():
             p.requires_grad = False 
@@ -486,8 +491,12 @@ class ResWACNNIndependentEntropy(ResWACNNSharedEntropy):
 
                 y_q_slice_prog = y_slice_prog - mu_prog 
                 y_q_slice_prog = y_q_slice_prog*block_mask
+                
+       
                 y_q_string  = self.gaussian_conditional_prog.compress(y_q_slice_prog, index_prog)
+
                 y_hat_slice_prog = self.gaussian_conditional_prog.decompress(y_q_string, index_prog)
+ 
 
                 y_hat_slice_prog = y_hat_slice_prog + mu_prog
 

@@ -18,3 +18,4 @@ from .WACNN.cnn import WACNN
 from .WACNN.scalable.scalable_cnn import ResWACNN
 from .WACNN.scalable.shared_entropy import ResWACNNSharedEntropy
 from .WACNN.scalable.independent_entropy import ResWACNNIndependentEntropy
+from .WACNN.scalable.conditional_independent import ConditionalWACNN

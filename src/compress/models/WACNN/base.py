@@ -58,14 +58,15 @@ class CompressionModel(nn.Module):
             updated |= rv
         return updated
 
-    def load_state_dict(self, state_dict, strict=True):
+    def load_state_dict(self, state_dict, strict=False):
         # Dynamically update the entropy bottleneck buffers related to the CDFs
+        """
         update_registered_buffers(
             self.entropy_bottleneck,
             "entropy_bottleneck",
             ["_quantized_cdf", "_offset", "_cdf_length"],
             state_dict,
         )
-
-        return nn.Module.load_state_dict(self, state_dict, strict=False)
+        """
+        return nn.Module.load_state_dict(self, state_dict, strict=strict)
 
