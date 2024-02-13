@@ -5,7 +5,7 @@ palette = sns.color_palette("tab10")
 #rc('font', family='Times New Roman')
 import matplotlib.pyplot as plt
 import wandb
-
+import torch 
 def plot_rate_distorsion(bpp_res, psnr_res,epoch):
 
 
@@ -45,11 +45,12 @@ def plot_rate_distorsion(bpp_res, psnr_res,epoch):
         markersize = legenda[type_name]["markersize"]
         leg = legenda[type_name]["legends"]
 
-        print("zio cane: ",len(colore),len(leg)," ",len(bpp)," ",len(psnr))
     
-        plt.plot(bpp,psnr,"-" ,color = colore, label =  leg ,markersize=7)
+        bpp = torch.tensor(bpp).cpu().numpy()
+        psnr = torch.tensor(psnr).cpu().numpy()
+        plt.plot(bpp,psnr,"-", label =  leg ,color = colore, markersize=7)
         #for x, y, marker, markersize_t in zip(bpp, psnr, symbols, markersize):
-        plt.plot(bpp, psnr, marker="o", markersize=7, color =  colore)
+        plt.plot(bpp, psnr, marker="o", markersize=7)
                 
 
 

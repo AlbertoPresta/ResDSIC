@@ -3,7 +3,7 @@ import torch
 import torch.nn as nn
 
 from compressai.ans import BufferedRansEncoder, RansDecoder
-from compress.entropy_models import EntropyBottleneck, GaussianConditional #fff
+from compressai.entropy_models import EntropyBottleneck, GaussianConditional #fff
 from compress.layers import GDN
 from ..utils import conv, deconv, update_registered_buffers
 from compress.ops import ste_round
@@ -30,7 +30,7 @@ class ResWACNNSharedEntropy(WACNN):
                 lmbda_list = None,
                 lrp_prog = None,
                 independent_lrp = None,
-                list_percentile = None,
+
                 **kwargs):
         super().__init__(N = N, M = M, **kwargs)
 
@@ -47,17 +47,13 @@ class ResWACNNSharedEntropy(WACNN):
         self.mask_policy = mask_policy
 
          
+
+
         self.scalable_levels = len(lmbda_list)
         self.lmbda_list = lmbda_list
-        if self.mask_policy == "learnable-mask":
-            self.lmbda_index_list = dict(zip(self.lmbda_list, [i  for i in range(len(self.lmbda_list))]))
-        else: 
-            assert list_percentile is not None 
-            assert len(list_percentile) == self.scalable_levels 
-            #assert list_percentile[0] == 0.0 
-            assert list_percentile[-1] == 1.0 
-            assert sum(list_percentile) <= self.scalable_levels
-            self.lmbda_index_list = dict(zip(self.lmbda_list, list_percentile ))
+        self.lmbda_index_list = dict(zip(self.lmbda_list, [i  for i in range(len(self.lmbda_list))] ))
+
+
 
 
 
@@ -114,6 +110,8 @@ class ResWACNNSharedEntropy(WACNN):
 
 
     def load_state_dict(self, state_dict, strict = False):
+        
+        
         """
         update_registered_buffers(
             self.entropy_bottleneck_prog,
@@ -130,6 +128,7 @@ class ResWACNNSharedEntropy(WACNN):
             state_dict,
         )
         """
+        
         super().load_state_dict(state_dict, strict =strict)
 
 

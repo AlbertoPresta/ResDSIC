@@ -58,8 +58,8 @@ def train_one_epoch(model, criterion, train_dataloader, optimizer, aux_optimizer
         loss.update(out_criterion["loss"].clone().detach())
         mse_loss.update(out_criterion["mse_loss"].mean().clone().detach())
         bpp_loss.update(out_criterion["bpp_loss"].clone().detach())
-        bpp_scalable.update(out_criterion["bpp_scalable"].clone().detach())
-        bpp_main.update(out_criterion["bpp_base"].clone().detach())
+        #bpp_scalable.update(out_criterion["bpp_scalable"].clone().detach())
+        #bpp_main.update(out_criterion["bpp_base"].clone().detach())
 
 
         wand_dict = {
@@ -67,8 +67,8 @@ def train_one_epoch(model, criterion, train_dataloader, optimizer, aux_optimizer
             "train_batch/loss": out_criterion["loss"].clone().detach().item(),
             "train_batch/bpp_total": out_criterion["bpp_loss"].clone().detach().item(),
             "train_batch/mse":out_criterion["mse_loss"].mean().clone().detach().item(),
-            "train_batch/bpp_base":out_criterion["bpp_base"].clone().detach().item(),
-            "train_batch/bpp_progressive":out_criterion["bpp_scalable"].clone().detach().item(),
+            #"train_batch/bpp_base":out_criterion["bpp_base"].clone().detach().item(),
+            #"train_batch/bpp_progressive":out_criterion["bpp_scalable"].clone().detach().item(),
 
 
         }
@@ -95,8 +95,8 @@ def train_one_epoch(model, criterion, train_dataloader, optimizer, aux_optimizer
         "train/loss": loss.avg,
         "train/bpp": bpp_loss.avg,
         "train/mse": mse_loss.avg,
-        "train/bpp_progressive":bpp_scalable.avg,
-        "train/bpp_base":bpp_main.avg,
+        #"train/bpp_progressive":bpp_scalable.avg,
+        #"train/bpp_base":bpp_main.avg,
 
         }
         
@@ -140,11 +140,15 @@ def valid_epoch(epoch, test_dataloader,criterion, model, pr_list = [0.05, 0.04, 
             d = d.to(device)
 
             for _,p in enumerate(pr_list):
-                
+
+
+                quality =  p
+                lmbda = model.lmbda_list[quality]
+                        
                 out_net = model(d, quality = p)
 
   
-                out_criterion = criterion(out_net, d, lmbda = p)
+                out_criterion = criterion(out_net, d, lmbda = lmbda)
                 psnr_im = compute_psnr(d, out_net["x_hat"])
 
                 bpp_loss.update(out_criterion["bpp_loss"])
@@ -184,11 +188,14 @@ def test_epoch(epoch, test_dataloader,criterion, model, pr_list = [0.05, 0.04, 0
 
             for j,p in enumerate(pr_list):
 
-                
+
+                quality =  p
+                lmbda = model.lmbda_list[quality]
+                        
                 out_net = model(d, quality =  p)
 
   
-                out_criterion = criterion(out_net, d, lmbda = p)
+                out_criterion = criterion(out_net, d, lmbda = lmbda)
 
                 psnr_im = compute_psnr(d, out_net["x_hat"])
                 psnr[j].update(psnr_im)
@@ -218,7 +225,7 @@ def test_epoch(epoch, test_dataloader,criterion, model, pr_list = [0.05, 0.04, 0
 
 
 def compress_with_ac(model,  filelist, device, epoch, pr_list,   writing = None):
-    #pr_list = [0] + pr_list + [-1]
+    #pr_list = [0] + pr_listtes + [-1]
     #model.update(None, device)
     l = len(pr_list)
     print("ho finito l'update")
@@ -228,7 +235,7 @@ def compress_with_ac(model,  filelist, device, epoch, pr_list,   writing = None)
 
     with torch.no_grad():
         for i,d in enumerate(filelist):
-            print("******************************* image ",d," ***************************************") 
+            #print("******************************* image ",d," ***************************************") 
 
 
 
@@ -259,10 +266,10 @@ def compress_with_ac(model,  filelist, device, epoch, pr_list,   writing = None)
                 num_pixels = size[0] * size[2] * size[3]
 
                 # calcolo lo stream del base 
-                data_string = data["strings"][:2]
+                data_string = data["strings"]#[:2]
                 bpp = sum(len(s[0]) for s in data_string) * 8.0 / num_pixels
 
-
+                """
                 if p in list(model.lmbda_index_list.keys()):
                     q = model.lmbda_index_list[p] 
                 else:
@@ -273,10 +280,11 @@ def compress_with_ac(model,  filelist, device, epoch, pr_list,   writing = None)
                     bpp_hype = sum(len(s) for s in data_string_hype) * 8.0 / num_pixels
 
                     data_string_scale = data["strings"][-1] # questo è una lista
-                    bpp_scale = sum(len(s[0]) for s in data_string_scale) * 8.0 / num_pixels #ddddddd
+                    bpp_scale = sum(len(s) for s in data_string_scale) * 8.0 / num_pixels #ddddddd
 
                     bpp += bpp_scale 
                     bpp += bpp_hype
+                """
 
                 bpp_loss[j].update(bpp)
 

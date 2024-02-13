@@ -95,6 +95,7 @@ def save_checkpoint(state, is_best, filename,filename_best,very_best):
 
 
     if is_best:
+        print("+ veramente il best-------------Z ",very_best)
         torch.save(state, filename_best)
         torch.save(state, very_best)
         wandb.save(very_best)
@@ -119,7 +120,6 @@ def configure_model(args,lmbda_list):
                                 lmbda_list = lmbda_list,
                                 lrp_prog = args.lrp_prog,
                                 independent_lrp = args.ind_lrp,
-                                list_percentile = args.list_percentile
                                 )
     return net
 
@@ -127,13 +127,12 @@ def configure_model(args,lmbda_list):
 
 def main(argv):
     args = parse_args(argv)
-    print(args)
+    
 
+    wandb_name = args.wandb_name 
 
-    if args.tester is False:
-        wandb.init(project="ResDSIC-MultiLevel", entity="albipresta")  #dddddd 
-    else:
-        wandb.init(project="ResDSIC-Tester", entity="albipresta")  
+    wandb.init(project = wandb_name, entity="albipresta")  #dddddd 
+    print("residual arguments!!!!-----> ",args)
 
     #torch.autograd.set_detect_anomaly(True)
 
@@ -198,43 +197,52 @@ def main(argv):
         last_epoch = 0 # checkpoint["epoch"] + 1
         #net.update()
 
-        #lista = list(checkpoint.keys())
-        #for l in lista:
-        #    print(l)
+        #net.entropy_bottleneck._quantized_cdf = checkpoint["state_dict"]["entropy_bottleneck._offset"].to(device)
+        #net.entropy_bottleneck_prog._quantized_cdf = checkpoint["state_dict"]["entropy_bottleneck_prog._offset"].to(device)
+
+        
         del checkpoint["state_dict"]["entropy_bottleneck_prog._offset"]
         del checkpoint["state_dict"]["entropy_bottleneck_prog._cdf_length"]
+        del checkpoint["state_dict"]["entropy_bottleneck_prog._quantized_cdf"]
+
         del checkpoint["state_dict"]["entropy_bottleneck._offset"]
         del checkpoint["state_dict"]["entropy_bottleneck._cdf_length"]
         del checkpoint["state_dict"]["entropy_bottleneck._quantized_cdf"]
-        del checkpoint["state_dict"]["entropy_bottleneck_prog._quantized_cdf"]
+        
 
         del checkpoint["state_dict"]["gaussian_conditional_prog._offset"]
         del checkpoint["state_dict"]["gaussian_conditional_prog._cdf_length"]
+        del checkpoint["state_dict"]["gaussian_conditional_prog._quantized_cdf"]
+        del checkpoint["state_dict"]["gaussian_conditional_prog.scale_table"]
+
         del checkpoint["state_dict"]["gaussian_conditional._offset"]
         del checkpoint["state_dict"]["gaussian_conditional._cdf_length"]
         del checkpoint["state_dict"]["gaussian_conditional._quantized_cdf"]
-        del checkpoint["state_dict"]["gaussian_conditional_prog._quantized_cdf"]
         del checkpoint["state_dict"]["gaussian_conditional.scale_table"]
-        del checkpoint["state_dict"]["gaussian_conditional_prog.scale_table"]
+        
+        
 
-        net.load_state_dict(checkpoint["state_dict"],strict = True)
-        #net.load_state_dict(checkpoint,strict = False)
+        net.load_state_dict(checkpoint["state_dict"],strict = False)
+        
         net.update()
+        print("PROVA HO FATTO IL LOAD, SPERIAMO TUTTO BENE!!!!")
+
+
         
     optimizer, aux_optimizer = configure_optimizers(net, args)
     lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, "min", factor=0.3, patience=4)
 
 
-    if args.model != "conditional":
-        criterion = ScalableRateDistortionLoss(lmbda_list=args.lmbda_list, frozen_base = args.frozen_base)
-    else:
-        criterion = RateDistortionLoss(lmbda=args.lmbda_list[-1])
+    #if args.model != "conditional":
+    #    criterion = ScalableRateDistortionLoss(lmbda_list=args.lmbda_list, frozen_base = args.frozen_base)
+    #else:
+    criterion = RateDistortionLoss(lmbda=args.lmbda_list[-1])
 
     if args.checkpoint != "none" and args.continue_training:    
         print("conitnuo il training!")
         optimizer.load_state_dict(checkpoint["optimizer"])
         #aux_optimizer.load_state_dict(checkpoint["aux_optimizer"])
-        lr_scheduler.load_state_dict(checkpoint["lr_scheduler"])
+        lr_scheduler.load_state_dict(checkpoint["lr_scheduler"])  #ddddd
 
     
 
@@ -257,10 +265,17 @@ def main(argv):
 
 
     if args.tester: 
-        net.freezer(total = True)
+        #net.freezer(total = True)
+        for p in net.parameters():
+            p.requires_grad = False
+        
         net.print_information()
+
+        bpp_test, psnr_test = test_epoch(0, test_dataloader,criterion, net, pr_list = [0,1])
+        print("test:  ",bpp_test,"   ",psnr_test)
         bpp, psnr = compress_with_ac(net,  filelist, device, epoch = 0, pr_list = [0,1],   writing = None)
         print("*********************************   OVER *********************************************************")
+        print(bpp,"  ++++   ",psnr)
         return 0
 
 
@@ -280,26 +295,25 @@ def main(argv):
 
             
         print("finito il train della epoca")
-        loss = valid_epoch(epoch, valid_dataloader,criterion, net, pr_list = net.lmbda_list)
+        lista = [i  for i in range(len(net.lmbda_list))]
+        loss = valid_epoch(epoch, valid_dataloader,criterion, net, pr_list = lista)
         print("finito il valid della epoca")
 
         lr_scheduler.step(loss)
         print(f'Current patience level: {lr_scheduler.patience - lr_scheduler.num_bad_epochs}')
 
-        _ = test_epoch(epoch, test_dataloader,criterion, net, pr_list = net.lmbda_list)
+        _, _ = test_epoch(epoch, test_dataloader,criterion, net, pr_list = lista)
         print("finito il test della epoca")
 
         is_best = loss < best_loss
         best_loss = min(loss, best_loss)
 
 
-        """
+        
         if epoch%5==0 or is_best:
 
-            model_cop = copy.deepcopy(net)
-            model_cop.update()
-
-            bpp, psnr = compress_with_ac(model_cop,  filelist, device, epoch = epoch_enc, pr_list = model_cop.lmbda_list,   writing = None)
+            net.update()
+            bpp, psnr = compress_with_ac(net,  filelist, device, epoch = epoch_enc, pr_list = lista,   writing = None)
             print("total: ",bpp,"  ",psnr)
             psnr_res = {}
             bpp_res = {}
@@ -307,12 +321,13 @@ def main(argv):
             bpp_res["our"] = bpp
             psnr_res["our"] = psnr
 
-            psnr_res["base"] =   [29.20, 30.59,32.26,34.15,35.91,37.72]
-            bpp_res["base"] =  [0.127,0.199,0.309,0.449,0.649,0.895]
+            psnr_res["base"] =   [29.20, 30.57,32.26,34.15,35.91,37.70]
+            bpp_res["base"] =  [0.13,0.199,0.309,0.449,0.649,0.895]
 
             plot_rate_distorsion(bpp_res, psnr_res,epoch_enc)
             epoch_enc += 1
-        """
+        
+        
 
 
 
@@ -337,7 +352,7 @@ def main(argv):
 
 
 
-        if (is_best is True and epoch > 10) or epoch%10==0: #args.save:
+        if is_best is True or epoch%10==0 or epoch > 98: #args.save:
             print("io qua devo entrare però!!!")
 
             save_checkpoint(

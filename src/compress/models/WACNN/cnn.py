@@ -200,6 +200,7 @@ class WACNN(CompressionModel):
             state_dict,
         )
         """
+        
 
         super().load_state_dict(state_dict, strict = strict)
 
