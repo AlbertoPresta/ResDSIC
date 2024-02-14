@@ -19,3 +19,46 @@ from .WACNN.scalable.scalable_cnn import ResWACNN
 from .WACNN.scalable.shared_entropy import ResWACNNSharedEntropy
 from .WACNN.scalable.independent_entropy import ResWACNNIndependentEntropy
 from .WACNN.scalable.conditional_independent import ConditionalWACNN
+from .WACNN.scalable.conditional_shared import ConditionalSharedWACNN
+
+
+models = {
+    
+    'cnn': WACNN,
+    "resWacnn":ResWACNN,
+    "shared":ResWACNNSharedEntropy,
+    "independent":ResWACNNIndependentEntropy,
+    "conditional":ConditionalWACNN,
+    "conditional_shared":ConditionalSharedWACNN
+}
+
+
+
+def configure_model(args,lmbda_list):
+    if args.model == "conditional":
+        net = models[args.model](N = args.N,
+                                M = args.M,
+                                mask_policy = args.mask_policy,
+                                lmbda_list = lmbda_list,
+                                joiner_policy = args.joiner_policy
+                                )
+
+    
+    elif args.model == "conditional_shared":
+        net = models[args.model](N = args.N,
+                                M = args.M,
+                                mask_policy = args.mask_policy,
+                                lmbda_list = lmbda_list,
+                                joiner_policy = args.joiner_policy,
+                                independent_hyperprior = args.independent_hyperprior
+                                )
+      
+    else:
+        net = models[args.model](N = args.N,
+                                M = args.M,
+                                mask_policy = args.mask_policy,
+                                lmbda_list = lmbda_list,
+                                lrp_prog = args.lrp_prog,
+                                independent_lrp = args.ind_lrp,
+                                )
+    return net

@@ -1,14 +1,15 @@
+
 import math
 import torch
 import torch.nn as nn
 from compress.layers import GDN
-from compressai.ans import BufferedRansEncoder, RansDecoder
 from compressai.entropy_models import EntropyBottleneck, GaussianConditional
 from compress.entropy_models import GaussianConditionalMask
 from ..utils import conv, deconv, update_registered_buffers
 from compress.ops import ste_round
 from compress.layers import conv3x3, subpel_conv3x3
-
+from compress.layers.mask_layer import Mask
+from compressai.ans import BufferedRansEncoder, RansDecoder
 
 from ..cnn import WACNN
 from compress.layers import conv3x3, subpel_conv3x3, Win_noShift_Attention
@@ -24,12 +25,7 @@ def get_scale_table(min=SCALES_MIN, max=SCALES_MAX, levels=SCALES_LEVELS):
     return torch.exp(torch.linspace(math.log(min), math.log(max), levels))
 
 
-
-
-
-
-
-class ConditionalWACNN(WACNN):
+class ConditionalSharedWACNN(WACNN):
     """CNN based model"""
 
     def __init__(self, 
@@ -38,12 +34,12 @@ class ConditionalWACNN(WACNN):
                 mask_policy = "scalable_res",
                 joiner_policy = "conditional",
                 lmbda_list = None,
+                independent_hyperprior = False,
                 **kwargs):
         super().__init__(N = N, M = M, **kwargs)
 
-
-        assert joiner_policy in ("conditional","residual","concatenation")
-
+        self.independent_hyperprior = independent_hyperprior
+        assert joiner_policy in ("conditional","residual","concatenation","cac")
         self.joiner_policy = joiner_policy
         self.N = N 
         self.M = M 
@@ -59,12 +55,14 @@ class ConditionalWACNN(WACNN):
         self.lmbda_list = lmbda_list
         self.lmbda_index_list = dict(zip(self.lmbda_list, [i  for i in range(len(self.lmbda_list))] ))
 
+        self.dimensions_M = [self.M, self.M*2 if self.joiner_policy == "concatenation" else self.M]
 
-        self.entropy_bottleneck_prog = EntropyBottleneck(self.N)
+        
         self.gaussian_conditional = GaussianConditional(None)
         self.gaussian_conditional_prog = GaussianConditionalMask(None)
     
-
+        self.masking = Mask(self.mask_policy,self.scalable_levels,self.M )
+        """
         if self.mask_policy == "learnable-mask-gamma":
             self.gamma = torch.nn.Parameter(torch.ones((self.scalable_levels - 1, self.M))) #il primo e il base layer, lìultimo è il completo!!!
             self.mask_conv = nn.Sequential(torch.nn.Conv2d(in_channels=self.M*2, out_channels=self.M, kernel_size=1, stride=1),)
@@ -75,12 +73,10 @@ class ConditionalWACNN(WACNN):
                                                           kernel_size=1, 
                                                           stride=1),)
                             for _ in range(len(self.lmbda_list) -1)
+            
+                            )
 
-            )
-
-
-
-
+        """
         self.g_a_progressive = nn.Sequential(
             conv(self.T, N, kernel_size=5, stride=2), # halve 2 so 128
             GDN(N),
@@ -94,92 +90,47 @@ class ConditionalWACNN(WACNN):
 
 
 
+        if self.independent_hyperprior:
 
-
-        self.h_a_prog = nn.Sequential(
-            conv3x3(self.M, 320),
-            nn.GELU(),
-            conv3x3(320, 288),
-            nn.GELU(),
-            conv3x3(288, 256, stride=2),
-            nn.GELU(),
-            conv3x3(256, 224),
-            nn.GELU(),
-            conv3x3(224, self.N, stride=2),
-        )
+            self.entropy_bottleneck_prog = EntropyBottleneck(self.N)
+            self.h_a_prog = nn.Sequential(
+                conv3x3(self.M, 320),
+                nn.GELU(),
+                conv3x3(320, 288),
+                nn.GELU(),
+                conv3x3(288, 256, stride=2),
+                nn.GELU(),
+                conv3x3(256, 224),
+                nn.GELU(),
+                conv3x3(224, self.N, stride=2),
+            )
   
 
-        self.h_mean_prog = nn.Sequential(
-            conv3x3(self.N, 192),
-            nn.GELU(),
-            subpel_conv3x3(192, 224, 2),
-            nn.GELU(),
-            conv3x3(224, 256),
-            nn.GELU(),
-            subpel_conv3x3(256, 288, 2),
-            nn.GELU(),
-            conv3x3(288, self.M),
-        )
-
-        self.h_scale_prog = nn.Sequential(
-            conv3x3(self.N, 192),
-            nn.GELU(),
-            subpel_conv3x3(192, 224, 2),
-            nn.GELU(),
-            conv3x3(224, 256),
-            nn.GELU(),
-            subpel_conv3x3(256, 288, 2),
-            nn.GELU(),
-            conv3x3(288, self.M),
-        )
-
-        if self.joiner_policy == "concatenation": 
-
-            self.g_s = nn.Sequential(
-                Win_noShift_Attention(dim=M*2, num_heads=8, window_size=4, shift_size=2),
-                deconv(M*2, M, kernel_size=5, stride=2),
-                GDN(M, inverse=True),
-                deconv(M, N, kernel_size=5, stride=2),
-                GDN(N, inverse=True),
-                Win_noShift_Attention(dim=N, num_heads=8, window_size=8, shift_size=4),
-                deconv(N, N, kernel_size=5, stride=2),
-                GDN(N, inverse=True),
-                deconv(N, 3, kernel_size=5, stride=2),
+            self.h_mean_prog = nn.Sequential(
+                conv3x3(self.N, 192),
+                nn.GELU(),
+                subpel_conv3x3(192, 224, 2),
+                nn.GELU(),
+                conv3x3(224, 256),
+                nn.GELU(),
+                subpel_conv3x3(256, 288, 2),
+                nn.GELU(),
+                conv3x3(288, self.M),
             )
 
 
-
-
-        self.cc_mean_transforms_prog = nn.ModuleList(
-            nn.Sequential(
-                conv(320 + 32*min(i, 5), 224, stride=1, kernel_size=3),
+            self.h_scale_prog = nn.Sequential(
+                conv3x3(self.N, 192),
                 nn.GELU(),
-                conv(224, 176, stride=1, kernel_size=3),
+                subpel_conv3x3(192, 224, 2),
                 nn.GELU(),
-                conv(176, 128, stride=1, kernel_size=3),
+                conv3x3(224, 256),
                 nn.GELU(),
-                conv(128, 64, stride=1, kernel_size=3),
+                subpel_conv3x3(256, 288, 2),
                 nn.GELU(),
-                conv(64, 32, stride=1, kernel_size=3),
-            ) for i in range(10)
-        )
-        self.cc_scale_transforms_prog = nn.ModuleList(
-            nn.Sequential(
-                conv(320 + 32 * min(i, 5), 224, stride=1, kernel_size=3),
-                nn.GELU(),
-                conv(224, 176, stride=1, kernel_size=3),
-                nn.GELU(),
-                conv(176, 128, stride=1, kernel_size=3),
-                nn.GELU(),
-                conv(128, 64, stride=1, kernel_size=3),
-                nn.GELU(),
-                conv(64, 32, stride=1, kernel_size=3),
-            ) for i in range(10)
+                conv3x3(288, self.M),
             )
 
-
-
-        
         if self.joiner_policy == "conditional":
             self.joiner = nn.ModuleList(
                 nn.Sequential(
@@ -190,6 +141,26 @@ class ConditionalWACNN(WACNN):
                     conv(64, 32, stride=1, kernel_size=3),
                 ) for i in range(10)
             )
+        elif self.joiner_policy == "cac":
+            self.joiner_policy = nn.Conv2d(in_channels=M,
+                                                       out_channels=M,
+                                                         kernel_size=1, 
+                                                         stride=1, 
+                                                         padding=0)
+                
+        self.g_s = nn.ModuleList(
+                    nn.Sequential(
+                    Win_noShift_Attention(dim= self.dimensions_M[i], num_heads=8, window_size=4, shift_size=2),
+                    deconv(self.dimensions_M[i], N, kernel_size=5, stride=2),
+                    GDN(N, inverse=True),
+                    deconv(N, N, kernel_size=5, stride=2),
+                    GDN(N, inverse=True),
+                    Win_noShift_Attention(dim=N, num_heads=8, window_size=8, shift_size=4),
+                    deconv(N, N, kernel_size=5, stride=2),
+                    GDN(N, inverse=True),
+                    deconv(N, 3, kernel_size=5, stride=2),
+            ) for i in range(2) 
+        )
 
 
     def aux_loss(self):
@@ -198,7 +169,25 @@ class ConditionalWACNN(WACNN):
         """
         aux_loss = sum(m.loss() for m in self.modules() if isinstance(m, EntropyBottleneck))
         return aux_loss
-    
+
+
+    def update(self, scale_table=None, force=False):
+        if scale_table is None:
+            scale_table = get_scale_table()
+        updated = self.gaussian_conditional.update_scale_table(scale_table, force=force)
+        updated = self.gaussian_conditional_prog.update_scale_table(scale_table, force=force)
+        if self.independent_hyperprior:
+            self.entropy_bottleneck_prog.update()
+
+        self.entropy_bottleneck.update()
+        return updated
+
+    def extract_mu_and_scale(self,mean_support, scale_support,slice_index,y_shape ):
+        mu = self.cc_mean_transforms[slice_index](mean_support)
+        mu = mu[:, :, :y_shape[0], :y_shape[1]]
+        scale = self.cc_scale_transforms[slice_index](scale_support)
+        scale = scale[:, :, :y_shape[0], :y_shape[1]] 
+        return mu, scale 
 
 
     def load_state_dict(self, state_dict):
@@ -211,14 +200,14 @@ class ConditionalWACNN(WACNN):
             state_dict,
         )
 
-
-        update_registered_buffers(
-            self.entropy_bottleneck_prog,
-            "entropy_bottleneck_prog",
-            ["_quantized_cdf", "_offset", "_cdf_length"],
-            state_dict,
-        )
-        super().load_state_dict(state_dict)
+        if self.independent_hyperprior:
+            update_registered_buffers(
+                self.entropy_bottleneck_prog,
+                "entropy_bottleneck_prog",
+                ["_quantized_cdf", "_offset", "_cdf_length"],
+                state_dict,
+            )
+            super().load_state_dict(state_dict)
 
 
     def split_ga(self, x, begin = True):
@@ -231,15 +220,7 @@ class ConditionalWACNN(WACNN):
 
 
 
-    def update(self, scale_table=None, force=False):
-        if scale_table is None:
-            scale_table = get_scale_table()
-        updated = self.gaussian_conditional.update_scale_table(scale_table, force=force)
-        updated = self.gaussian_conditional_prog.update_scale_table(scale_table, force=force)
-        updated |= super().update(force=force)
 
-        self.entropy_bottleneck_prog.update(force=force)
-        return updated
 
 
     def concatenate(self, y_base, x):
@@ -256,6 +237,7 @@ class ConditionalWACNN(WACNN):
         return result     
 
 
+    """
     def extract_mask(self,scale,scale_prog = None,  pr = 0):
 
         shapes = scale.shape
@@ -325,7 +307,43 @@ class ConditionalWACNN(WACNN):
                 return c.to(scale.device)     
         else:
             raise NotImplementedError()
+    """ 
+
+    def print_information(self):
+        print(" g_a: ",sum(p.numel() for p in self.g_a.parameters()))
+        print(" g_a_progressive: ",sum(p.numel() for p in self.g_a_progressive.parameters()))
+        print(" h_a: ",sum(p.numel() for p in self.h_a.parameters()))
+        print(" h_means_a: ",sum(p.numel() for p in self.h_mean_s.parameters()))
+        print(" h_scale_a: ",sum(p.numel() for p in self.h_scale_s.parameters()))
+
+
+        print("cc_mean_transforms",sum(p.numel() for p in self.cc_mean_transforms.parameters()))
+        print("cc_scale_transforms",sum(p.numel() for p in self.cc_scale_transforms.parameters()))
+        print("cc_scale_transforms",sum(p.numel() for p in self.lrp_transforms.parameters()))
+
+        print("entropy_bottleneck",sum(p.numel() for p in self.entropy_bottleneck.parameters() if p.requires_grad == True))
+        if "learnable-mask" in self.mask_policy:
+            print("mask conv",sum(p.numel() for p in self.masking.mask_conv.parameters()))
+            if "gamma" is self.mask_policy:
+                print("gamma",sum(p.numel() for p in self.masking.gamma.parameters()))
+
         
+        if self.independent_hyperprior:
+            print(" h_mean_prog: ",sum(p.numel() for p in self.h_mean_prog.parameters()))
+            print(" h_scale_prog: ",sum(p.numel() for p in self.h_scale_prog.parameters()))
+            print(" h_a_prog: ",sum(p.numel() for p in self.h_a_prog.parameters()))
+            print("entropy_bottleneck PROG",sum(p.numel() for p in self.entropy_bottleneck_prog.parameters() if p.requires_grad == True))
+
+        for i in range(2):
+            print(" g_s_" + str(i) + ":" ,sum(p.numel() for p in self.g_s[i].parameters()))
+
+        print("**************************************************************************")
+        model_tr_parameters = sum(p.numel() for p in self.parameters() if p.requires_grad)
+        model_fr_parameters = sum(p.numel() for p in self.parameters() if p.requires_grad== False)
+        print(" trainable parameters: ",model_tr_parameters)
+        print(" freeze parameterss: ", model_fr_parameters)
+        return sum(p.numel() for p in self.parameters() if p.requires_grad)
+
 
 
     def determ_quality(self,quality):
@@ -339,36 +357,45 @@ class ConditionalWACNN(WACNN):
     
 
 
-    def extract_mu_and_scale(self,mean_support, scale_support,slice_index,y_shape, prog = False ):
-
-            if prog is False:
-                mu = self.cc_mean_transforms[slice_index](mean_support)
-                mu = mu[:, :, :y_shape[0], :y_shape[1]]
-
-                scale = self.cc_scale_transforms[slice_index](scale_support)
-                scale = scale[:, :, :y_shape[0], :y_shape[1]] 
-
-                return mu, scale 
-
-            else:
-                mu = self.cc_mean_transforms_prog[slice_index](mean_support)
-                mu = mu[:, :, :y_shape[0], :y_shape[1]]
-
-                scale = self.cc_scale_transforms_prog[slice_index](scale_support)
-                scale = scale[:, :, :y_shape[0], :y_shape[1]] 
-
-                return mu, scale 
-
-
 
     def merge(self,y_main,y_prog, slice = 0):
         if self.joiner_policy == "residual":
             return y_main + y_prog 
-        elif self.joiner_policy == "concatenation":
+        elif self.joiner_policy == "concatenation" or self.joiner_policy == "cac":
             return y_main #torch.cat([y_main, y_prog], dim=1).to(y_main.device)
+        elif self.joiner_policy == "block_concatenation":
+            return torch.cat([y_main, y_prog], dim=1).to(y_main.device)
+
+
         else:
             y_hat_slice_support = torch.cat([y_main, y_prog], dim=1)
             return self.joiner[slice](y_hat_slice_support)
+
+
+    def hyperEncoderDecoder(self,y, progressive = False):
+        if progressive:
+            z_prog = self.h_a_prog(y)
+            _, z_likelihoods_prog = self.entropy_bottleneck_prog(z_prog)
+
+            z_offset_prog = self.entropy_bottleneck_prog._get_medians()
+            z_tmp_prog = z_prog - z_offset_prog
+            z_hat_prog = ste_round(z_tmp_prog) + z_offset_prog
+
+            scales_prog = self.h_scale_prog(z_hat_prog)
+            means_prog = self.h_mean_prog(z_hat_prog)
+            return z_likelihoods_prog, scales_prog, means_prog
+        else:
+            z = self.h_a(y)
+            _, z_likelihoods = self.entropy_bottleneck(z)
+
+            z_offset = self.entropy_bottleneck._get_medians()
+            z_tmp = z - z_offset
+            z_hat = ste_round(z_tmp) + z_offset
+
+            scales = self.h_scale_s(z_hat)
+            means = self.h_mean_s(z_hat)
+            return z_likelihoods, scales, means
+
 
     # provo a tenere tutti insieme! poi vediamo 
     def forward(self, x, quality = 0):
@@ -380,50 +407,33 @@ class ConditionalWACNN(WACNN):
         y_progressive_support = self.concatenate(y_base,x)
         y_progressive = self.g_a_progressive(y_progressive_support)
 
-        z = self.h_a(y)
-        _, z_likelihoods = self.entropy_bottleneck(z)
 
-        z_offset = self.entropy_bottleneck._get_medians()
-        z_tmp = z - z_offset
-        z_hat = ste_round(z_tmp) + z_offset
+        z_likelihoods, latent_scales, latent_means = self.hyperEncoderDecoder(y)
 
-        latent_scales = self.h_scale_s(z_hat)
-        latent_means = self.h_mean_s(z_hat)
         
-        z_prog = self.h_a_prog(y_progressive)
-        _, z_likelihoods_prog = self.entropy_bottleneck_prog(z_prog)
+        z_likelihoods_prog, scales_prog, means_prog = self.hyperEncoderDecoder(y_progressive,
+                                                        True if self.independent_hyperprior \
+                                                        else False)
 
-        z_offset_prog = self.entropy_bottleneck_prog._get_medians()
-        z_tmp_prog = z_prog - z_offset_prog
-        z_hat_prog = ste_round(z_tmp_prog) + z_offset_prog
-
-        scales_prog = self.h_scale_prog(z_hat_prog)
-        means_prog = self.h_mean_prog(z_hat_prog)
 
         y_slices = y.chunk(self.num_slices, 1)
         y_progressive_slices = y_progressive.chunk(self.num_slices,dim = 1)
 
         y_likelihood_main = []
         y_likelihood_progressive = []
-        y_hat = []
         y_hat_slices = []
-
-        mask = self.extract_mask(latent_scales,pr = quality)
-        if "learnable-mask" in self.mask_policy: # and self.lmbda_index_list[p]!=0 and self.lmbda_index_list[p]!=len(self.lmbda_list) -1:
-            if self.training:
-                mask = mask + (torch.rand_like(mask) - 0.5)
-                mask = mask + mask.round().detach() - mask.detach()  # Differentiable torch.round()   
-            else:
-                mask = torch.round(mask)
-        mask_slices = mask.chunk(self.num_slices,dim = 1)
         y_hat_slices_prog = []
+
+        mask = self.masking(latent_scales,pr = quality)
+        if "learnable-mask" in self.mask_policy: # and self.lmbda_index_list[p]!=0 and self.lmbda_index_list[p]!=len(self.lmbda_list) -1:
+            mask = self.masking.apply_noise(mask,self.training)
+        mask_slices = mask.chunk(self.num_slices,dim = 1)
+        
         for slice_index, y_slice in enumerate(y_slices):
+            support_slices = (y_hat_slices if self.max_support_slices < 0 else y_hat_slices[:self.max_support_slices])
 
             y_progressive_slice = y_progressive_slices[slice_index]
             block_mask = mask_slices[slice_index]
-
-            support_slices = (y_hat_slices if self.max_support_slices < 0 else y_hat_slices[:self.max_support_slices])
-            # encode the main latent representation 
 
             mean_support = torch.cat([latent_means] + support_slices, dim=1)
             scale_support = torch.cat([latent_scales] + support_slices, dim=1)
@@ -442,14 +452,16 @@ class ConditionalWACNN(WACNN):
 
             mean_support_prog = torch.cat([means_prog] + support_slices, dim=1)
             scale_support_prog = torch.cat([scales_prog] + support_slices, dim=1)
-            mu_prog, scale_prog = self.extract_mu_and_scale(mean_support_prog, scale_support_prog, slice_index, y_shape, prog = True)
+            mu_prog, scale_prog = self.extract_mu_and_scale(mean_support_prog, scale_support_prog, slice_index, y_shape)
 
-            _, y_slice_likelihood_prog = self.gaussian_conditional_prog(y_progressive_slice, scale_prog,mu_prog, mask = block_mask)
+            _, y_slice_likelihood_prog = self.gaussian_conditional_prog(y_progressive_slice, 
+                                                                        scale_prog*block_mask,
+                                                                        mu_prog,
+                                                                        mask = block_mask)
    
             y_likelihood_progressive.append(y_slice_likelihood_prog)
 
             y_hat_slice_progressive = ste_round(y_progressive_slice - mu_prog)*block_mask + mu_prog
-
 
             lrp_support_prog = torch.cat([mean_support_prog, y_hat_slice_progressive], dim=1)
             lrp_prog = self.lrp_transforms[slice_index](lrp_support_prog)
@@ -464,23 +476,33 @@ class ConditionalWACNN(WACNN):
 
 
         if self.joiner_policy == "concatenation":
+
+            y_hat = torch.cat(y_hat_slices +  y_hat_slices_prog , dim=1) if quality == 1 else torch.cat(y_hat_slices,dim = 1)
+        elif self.joiner_policy == "cac":
             y_hat = torch.cat(y_hat_slices +  y_hat_slices_prog , dim=1)
+            y_hat = self.joiner(y_hat)
         else:
             y_hat = torch.cat(y_hat_slices, dim=1)
 
 
         y_likelihoods_main = torch.cat(y_likelihood_main, dim=1)
         y_likelihoods_progressive = torch.cat(y_likelihood_progressive)
-        x_hat = self.g_s(y_hat)
+        x_hat = self.g_s[0 if quality == 0 else 1](y_hat)
 
         return {
             "x_hat": x_hat,
             "likelihoods": {"y": y_likelihoods_main, "z": z_likelihoods,"z_prog":z_likelihoods_prog,"y_prog":y_likelihoods_progressive},
         }
+    
 
-        
 
-    def compress(self, x, quality = 0.0):
+
+
+    def compress(self, x, quality = 0.0, mask_pol = None):
+
+        if mask_pol is None:
+            mask_pol = self.mask_policy
+
         y_base= self.split_ga(x)
         y = self.split_ga(y_base,begin = False)
         y_shape = y.shape[2:]
@@ -508,6 +530,7 @@ class ConditionalWACNN(WACNN):
         offsets_prog = self.gaussian_conditional_prog.offset.reshape(-1).int().tolist()
         encoder_prog = BufferedRansEncoder()
 
+
         symbols_list = []
         indexes_list = []
 
@@ -524,26 +547,31 @@ class ConditionalWACNN(WACNN):
             q = quality
 
 
-        #if q != 0:self.def
-        z_prog = self.h_a_prog(y_progressive)
-        z_string_prog = self.entropy_bottleneck_prog.compress(z_prog)
-        z_hat_prog = self.entropy_bottleneck_prog.decompress(z_string_prog,z_prog.size()[-2:])
-        latent_scales_prog = self.h_scale_prog(z_hat_prog)
-        latent_means_prog = self.h_mean_prog(z_hat_prog)
 
-        mask = self.extract_mask(scale = latent_scales_prog, pr =q)
+        if self.independent_hyperprior:
+            z_prog = self.h_a_prog(y_progressive)
+            z_string_prog = self.entropy_bottleneck_prog.compress(z_prog)
+            z_hat_prog = self.entropy_bottleneck_prog.decompress(z_string_prog,z_prog.size()[-2:])
+            latent_scales_prog = self.h_scale_prog(z_hat_prog)
+            latent_means_prog = self.h_mean_prog(z_hat_prog)
+        else:
+            z_prog = self.h_a(y_progressive)
+            z_string_prog = self.entropy_bottleneck.compress(z_prog)
+            z_hat_prog = self.entropy_bottleneck.decompress(z_string_prog,z_prog.size()[-2:])
+            latent_scales_prog = self.h_scale_s(z_hat_prog)
+            latent_means_prog = self.h_mean_s(z_hat_prog)
+
+        mask = self.masking(scale = latent_scales_prog, pr =q, mask_pol = mask_pol)
         mask = torch.round(mask)
         mask_slices = mask.chunk(self.num_slices,dim = 1)
+        
 
-        #progressive_strings = []
-
-    
         y_slices = y.chunk(self.num_slices, 1)
         y_hat_slices = []
+        y_hat_slices_prog = []
 
         y_progressive_slices = y_progressive.chunk(self.num_slices,dim = 1)
 
-        progressive_strings = []
         for slice_index, y_slice in enumerate(y_slices):
             #part con la parte main 
             support_slices = (y_hat_slices if self.max_support_slices < 0 else y_hat_slices[:self.max_support_slices])
@@ -568,38 +596,28 @@ class ConditionalWACNN(WACNN):
             block_mask = mask_slices[slice_index]
             y_slice_prog = y_progressive_slices[slice_index]
 
-            #[latent_means] + support_slices
             mean_support_prog = torch.cat([latent_means_prog] + support_slices, dim=1)
             scale_support_prog = torch.cat([latent_scales_prog] + support_slices, dim=1)
-            mu_prog, scale_prog = self.extract_mu_and_scale(mean_support_prog,scale_support_prog,slice_index,y_shape,prog = True)
+            mu_prog, scale_prog = self.extract_mu_and_scale(mean_support_prog, scale_support_prog, slice_index, y_shape)
 
             index_prog = self.gaussian_conditional_prog.build_indexes(scale_prog*block_mask) #saràda aggiungere la maschera
             index_prog = index_prog.int()
 
-            y_q_slice_prog = self.gaussian_conditional_prog.quantize(y_slice_prog, "symbols",mu_prog)
+            y_q_slice_prog = self.gaussian_conditional_prog.quantize(y_slice_prog, "symbols",mu_prog, mask=block_mask)
             y_hat_slice_prog = y_q_slice_prog + mu_prog
+
 
             symbols_list_prog.extend(y_q_slice_prog.reshape(-1).tolist())
             indexes_list_prog.extend(index_prog.reshape(-1).tolist())
-            
 
-            #index_prog = self.gaussian_conditional_prog.build_indexes(scale_prog*block_mask) #saràda aggiungere la maschera
-            #index_prog = index_prog.int()
-            #y_q_slice_prog = y_slice_prog - mu_prog 
-            #y_q_slice_prog = y_q_slice_prog*block_mask
-            #y_q_string  = self.gaussian_conditional_prog.compress(y_q_slice_prog, index_prog)
-            #y_hat_slice_prog = self.gaussian_conditional_prog.decompress(y_q_string, index_prog)
-            #y_hat_slice_prog = y_hat_slice_prog + mu_prog
-            #progressive_strings.append(y_q_string)
-            
 
             lrp_support_prog = torch.cat([mean_support_prog, y_hat_slice_prog], dim=1)
             lrp_prog = self.lrp_transforms[slice_index](lrp_support_prog)
             lrp_prog = 0.5 * torch.tanh(lrp_prog)
             y_hat_slice_prog += lrp_prog
 
-
-            y_hat_slice = self.merge(y_hat_slice_main,y_hat_slice_prog)
+            y_hat_slice = self.merge(y_hat_slice_main, y_hat_slice_prog, slice_index)
+            y_hat_slices_prog.append(y_hat_slice_prog)
 
             y_hat_slices.append(y_hat_slice)
 
@@ -613,14 +631,19 @@ class ConditionalWACNN(WACNN):
         y_string_prog = encoder_prog.flush()
         y_strings_prog.append(y_string_prog)
 
-        if q == 0:
-            return {"strings": [y_strings, z_strings], "shape": [z.size()[-2:]]}
+
+
         
         return {"strings": [y_strings, z_strings, z_string_prog,y_strings_prog],  #preogressive_strings
                 "shape": [z.size()[-2:],z_prog.size()[-2:]],          
                 }   
+    
 
-    def decompress(self, strings, shape, quality):
+
+    def decompress(self, strings, shape, quality, mask_pol = None):
+
+        if mask_pol is None:
+            mask_pol = self.mask_policy
 
         if quality in list(self.lmbda_index_list.keys()):
             q = self.lmbda_index_list[quality] 
@@ -650,21 +673,28 @@ class ConditionalWACNN(WACNN):
         decoder_prog = RansDecoder()
         decoder_prog.set_stream(y_string_prog)
 
-        z_hat_prog =  self.entropy_bottleneck_prog.decompress(strings[2],shape[-1])#strings[-1]  #self.entropy_bottleneck.decompress(strings[-1],shape[-1])
-            
-        latent_scales_prog = self.h_scale_prog(z_hat_prog)
-        latent_means_prog = self.h_mean_prog(z_hat_prog)
+        
 
-        #progressive_strings = strings[-1]
+        if self.independent_hyperprior:
+            z_hat_prog =  self.entropy_bottleneck_prog.decompress(strings[2],shape[-1])
+            latent_scales_prog = self.h_scale_prog(z_hat_prog)
+            latent_means_prog = self.h_mean_prog(z_hat_prog)
+        else:
+            z_hat_prog =  self.entropy_bottleneck.decompress(strings[2],shape[-1])
+            latent_scales_prog = self.h_scale_s(z_hat_prog)
+            latent_means_prog = self.h_mean_s(z_hat_prog)
 
-        mask = self.extract_mask(scale = latent_scales_prog, pr =q)
+
+        mask = self.masking(scale = latent_scales_prog, pr =q, mask_pol = mask_pol)
         mask = torch.round(mask)
         mask_slices = mask.chunk(self.num_slices,dim = 1)
 
         y_hat_slices = []
-        y_hat_progressive = []
+        y_hat_slices_prog = []
+
 
         for slice_index in range(self.num_slices):
+            block_mask = mask_slices[slice_index]
 
             support_slices = (y_hat_slices if self.max_support_slices < 0 else y_hat_slices[:self.max_support_slices])
 
@@ -683,94 +713,41 @@ class ConditionalWACNN(WACNN):
             lrp = 0.5 * torch.tanh(lrp)
             y_hat_slice_main += lrp
 
-            #y_hat_slices.append(y_hat_slice)              
-            block_mask = mask_slices[slice_index]
-
+           
             mean_support_prog = torch.cat([latent_means_prog] + support_slices, dim=1)
             scale_support_prog = torch.cat([latent_scales_prog] + support_slices, dim=1)
-            mu_prog, scale_prog = self.extract_mu_and_scale(mean_support_prog, 
-                                                            scale_support_prog, 
-                                                            slice_index,
-                                                            y_shape,
-                                                            prog = True)
+            mu_prog, scale_prog = self.extract_mu_and_scale(mean_support_prog, scale_support_prog, slice_index, y_shape)
 
-            index_prog = self.gaussian_conditional_prog.build_indexes(scale_prog*block_mask)
-            index_prog = index_prog.int()  
+            index_prog = self.gaussian_conditional_prog.build_indexes(scale_prog*block_mask) #saràda aggiungere la maschera
+            index_prog = index_prog.int()      
+
 
             rv_prog = decoder_prog.decode_stream(index_prog.reshape(-1).tolist(),
                                                 cdf_prog, 
                                                cdf_lengths_prog, 
                                                 offsets_prog)
             rv_prog = torch.Tensor(rv_prog).reshape(mu_prog.shape)
-            y_hat_slice_prog = self.gaussian_conditional.dequantize(rv_prog, mu_prog)
 
-            #pr_strings = progressive_strings[slice_index]
-            #rv_prog = self.gaussian_conditional_prog.decompress(pr_strings, index_prog, means= mu_prog) # decoder_prog.decode_stream(index_prog.reshape(-1).tolist(), cdf_prog, cdf_lengths_prog, offsets_prog)
-            #y_hat_slice_prog = rv_prog.reshape(mu_prog.shape).to(mu_prog.device)
 
+            y_hat_slice_prog = self.gaussian_conditional_prog.dequantize(rv_prog, means = mu_prog)
 
             lrp_support_prog = torch.cat([mean_support_prog, y_hat_slice_prog], dim=1)
             lrp_prog = self.lrp_transforms[slice_index](lrp_support_prog)
             lrp_prog = 0.5 * torch.tanh(lrp_prog)
             y_hat_slice_prog += lrp_prog
 
+            y_hat_slice = self.merge(y_hat_slice_main, y_hat_slice_prog, slice_index)
+            y_hat_slices_prog.append(y_hat_slice_prog)
 
-
-            y_hat_slice = self.merge(y_hat_slice_main,y_hat_slice_prog)
-
-            
-            
-            y_hat_progressive.append(y_hat_slice_prog)
             y_hat_slices.append(y_hat_slice)
 
-        if self.joiner_policy != "concatenation":
+
+        if self.joiner_policy == "concatenation":
+            y_hat = torch.cat(y_hat_slices +  y_hat_slices_prog , dim=1) if quality != 0 else torch.cat(y_hat_slices,dim = 1)
+        elif self.joiner_policy == "cac":
+            y_hat = torch.cat(y_hat_slices +  y_hat_slices_prog , dim=1)
+            y_hat = self.joiner(y_hat)
+        else:
             y_hat = torch.cat(y_hat_slices, dim=1)
-        else: 
-            y_hat = torch.cat(y_hat_slices + y_hat_progressive, dim=1)
-        x_hat = self.g_s(y_hat).clamp_(0, 1)
-
-        return {"x_hat": x_hat}            
-
-
-
-
-
-
-    def print_information(self):
-        print(" g_a: ",sum(p.numel() for p in self.g_a.parameters()))
-        print(" g_a_progressive: ",sum(p.numel() for p in self.g_a_progressive.parameters()))
-
-        print(" h_a: ",sum(p.numel() for p in self.h_a.parameters()))
-        print(" h_a_prog: ",sum(p.numel() for p in self.h_a_prog.parameters()))
-
-        print(" h_means_s: ",sum(p.numel() for p in self.h_mean_s.parameters()))
-        print(" h_scale_s: ",sum(p.numel() for p in self.h_scale_s.parameters()))
-        print(" h_means_s_prog: ",sum(p.numel() for p in self.h_mean_prog.parameters()))
-        print(" h_scale_s_prog: ",sum(p.numel() for p in self.h_scale_prog.parameters()))
-
-        print("cc_mean_transforms",sum(p.numel() for p in self.cc_mean_transforms.parameters()))
-        print("cc_scale_transforms",sum(p.numel() for p in self.cc_scale_transforms.parameters()))
-        print("cc_mean_transforms_prog",sum(p.numel() for p in self.cc_mean_transforms_prog.parameters()))
-        print("cc_scale_transforms_prog",sum(p.numel() for p in self.cc_scale_transforms_prog.parameters()))
-
-        print("lrp_transform",sum(p.numel() for p in self.lrp_transforms.parameters()))
-
-        print("entropy_bottleneck",sum(p.numel() for p in self.entropy_bottleneck.parameters() if p.requires_grad == True))
-        print("entropy_bottleneck PROG",sum(p.numel() for p in self.entropy_bottleneck_prog.parameters() if p.requires_grad == True))
-
-        if self.mask_policy== "learnable-mask":
-            print("mask conv",sum(p.numel() for p in self.mask_conv.parameters()))
-        
-
-        if self.joiner_policy == "conditional":
-            print("joiner",sum(p.numel() for p in self.joiner.parameters()))
-
-
-        print("**************************************************************************")
-        model_tr_parameters = sum(p.numel() for p in self.parameters() if p.requires_grad)
-        model_fr_parameters = sum(p.numel() for p in self.parameters() if p.requires_grad== False)
-        print(" trainable parameters: ",model_tr_parameters)
-        print(" freeze parameterss: ", model_fr_parameters)
-        return sum(p.numel() for p in self.parameters() if p.requires_grad)
-
-
+        x_hat = self.g_s[0 if quality == 0 else 1](y_hat).clamp_(0,1)
+        return {"x_hat": x_hat}  

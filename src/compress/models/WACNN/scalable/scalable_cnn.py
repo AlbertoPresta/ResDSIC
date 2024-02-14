@@ -3,7 +3,7 @@ import torch
 import torch.nn as nn
 
 from compressai.ans import BufferedRansEncoder, RansDecoder
-from compress.entropy_models import EntropyBottleneck, GaussianConditional
+from compressai.entropy_models import EntropyBottleneck, GaussianConditional
 from compress.layers import GDN
 from ..utils import conv, deconv, update_registered_buffers
 from compress.ops import ste_round

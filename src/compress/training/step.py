@@ -211,7 +211,7 @@ def test_epoch(epoch, test_dataloader,criterion, model, pr_list = [0.05, 0.04, 0
         elif i == len(pr_list) - 1:
             name = "test_complete"
         else:
-            c = str(model.lmbda_index_list[pr_list[i]])
+            c = str(i)
             name = "test_quality_" + c 
         
         log_dict = {
@@ -224,7 +224,7 @@ def test_epoch(epoch, test_dataloader,criterion, model, pr_list = [0.05, 0.04, 0
     return [bpp_loss[i].avg for i in range(len(bpp_loss))], [psnr[i].avg for i in range(len(psnr))]
 
 
-def compress_with_ac(model,  filelist, device, epoch, pr_list,   writing = None):
+def compress_with_ac(model,  filelist, device, epoch, pr_list,   writing = None, mask_pol = None):
     #pr_list = [0] + pr_listtes + [-1]
     #model.update(None, device)
     l = len(pr_list)
@@ -247,11 +247,12 @@ def compress_with_ac(model,  filelist, device, epoch, pr_list,   writing = None)
             x_padded = F.pad(x, pad, mode="constant", value=0)
 
             for j,p in enumerate(pr_list):
+                print("******************************* ",p)
 
                 name = "level_" + str(j)
 
-                data =  model.compress(x_padded, quality =p )
-                out_dec = model.decompress(data["strings"], data["shape"], quality = p)
+                data =  model.compress(x_padded, quality =p, mask_pol = None )
+                out_dec = model.decompress(data["strings"], data["shape"], quality = p, mask_pol = None)
 
                 out_dec["x_hat"] = F.pad(out_dec["x_hat"], unpad)
                 out_dec["x_hat"].clamp_(0.,1.)     

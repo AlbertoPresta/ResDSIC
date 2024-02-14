@@ -26,7 +26,7 @@ from torch.utils.data import DataLoader
 from torchvision import transforms
 from compress.training.loss import ScalableRateDistortionLoss, RateDistortionLoss
 from compress.datasets.utils import ImageFolder, TestKodakDataset
-from compress.zoo import models
+from compress.models import  configure_model
 import os
 from collections import OrderedDict
 
@@ -104,24 +104,6 @@ def save_checkpoint(state, is_best, filename,filename_best,very_best):
 
 
 
-def configure_model(args,lmbda_list):
-    if args.model == "conditional":
-        net = models[args.model](N = args.N,
-                                M = args.M,
-                                mask_policy = args.mask_policy,
-                                lmbda_list = lmbda_list,
-                                joiner_policy = args.joiner_policy
-                                )
-
-    else:
-        net = models[args.model](N = args.N,
-                                M = args.M,
-                                mask_policy = args.mask_policy,
-                                lmbda_list = lmbda_list,
-                                lrp_prog = args.lrp_prog,
-                                independent_lrp = args.ind_lrp,
-                                )
-    return net
 
 
 
@@ -282,6 +264,7 @@ def main(argv):
 
     for epoch in range(last_epoch, args.epochs):
         print("******************************************************") #ffffff
+        print(net.mask_policy)
         print("epoch: ",epoch)
         start = time.time()
         #print(f"Learning rate: {optimizer.param_groups[0]['lr']}")
@@ -313,7 +296,14 @@ def main(argv):
         if epoch%5==0 or is_best:
 
             net.update()
-            bpp, psnr = compress_with_ac(net,  filelist, device, epoch = epoch_enc, pr_list = lista,   writing = None)
+            if epoch_enc < 5:
+                mask_pol = None 
+                lista = [i  for i in range(len(net.lmbda_list))]
+            else: 
+                mask_pol = "point-based-std"
+                lista = [0.0,0.2,0.4,0.6,0.8,1.0]
+
+            bpp, psnr = compress_with_ac(net,  filelist, device, epoch = epoch_enc, pr_list = lista,   writing = None, mask_pol = mask_pol)
             print("total: ",bpp,"  ",psnr)
             psnr_res = {}
             bpp_res = {}
@@ -336,7 +326,7 @@ def main(argv):
         else:
             check = "zero"
 
-        name_folder = check + "_" + "_multi_" + str(len(args.lmbda_list)) + "_" + args.model + "_" + args.mask_policy + "_" + str(args.M) + "_" + str(args.frozen_base)  + "_" + str(args.lmbda_list[0]) + "_" + str(args.lmbda_list[-1]) 
+        name_folder = check + "_" + "_multi_" + str(len(args.lmbda_list)) + "_" + args.model + "_" + args.mask_policy + "_" + str(args.M) +  "_" + str(args.lmbda_list) + str(args.independent_hyperprior)
         cartella = os.path.join(args.save_path,name_folder)
 
 
@@ -390,6 +380,6 @@ def main(argv):
 
 
 if __name__ == "__main__":
-    #Enhanced-imagecompression-adapter-sketch
+    #Enhanced-imagecompression-adapter-sketch #sss
      
     main(sys.argv[1:])

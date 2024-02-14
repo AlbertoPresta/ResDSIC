@@ -149,15 +149,11 @@ class ResWACNNIndependentEntropy(ResWACNNSharedEntropy):
             scale_input = torch.cat([scale,scale_prog],dim = 1)
             importance_map =  self.mask_conv(scale_input) 
             #importance_map = torch.clip(importance_map + 0.5, 0, 1)
-            importance_map = torch.relu_clip(importance_map) 
+            importance_map = torch.sigmoid(importance_map + 0.5) 
 
-            #importance_map = torch.sigmoid(importance_map)
-
-            index_pr = self.scalable_levels -  pr
-            index_pr = int(index_pr)
-            #index_pr = pr - 1
-            gamma = torch.sum(torch.stack([self.gamma[j] for j in range(index_pr)]),dim = 0) # più uno l'hom esso in lmbda_index
-            gamma = gamma[None, :, None, None]
+            idx = pr - 1
+            gamma = self.gamma[idx][None, :, None, None]
+            #gamma = gamma[None, :, None, None]
             gamma = torch.relu(gamma) 
 
 
@@ -173,18 +169,30 @@ class ResWACNNIndependentEntropy(ResWACNNSharedEntropy):
             assert scale_prog is not None 
             scale_input = torch.cat([scale,scale_prog],dim = 1)
 
-            importance_map = torch.sum(torch.stack([self.relu_clip(self.mask_conv[i](scale_input)) for i in range(pr)],dim = 0),dim = 0) 
-            importance_map = self.relu_clip(importance_map)    
+            importance_map = torch.sum(torch.stack([torch.sigmoid(self.mask_conv[i](scale_input)) for i in range(pr)],dim = 0),dim = 0) 
+            importance_map = torch.sigmoid(importance_map)    
 
             return importance_map       
-
-
 
         elif self.mask_policy == "two-levels":
             if pr == 0:
                 return torch.zeros_like(scale).to(scale.device)
             else:
                 return torch.ones_like(scale).to(scale.device)
+        
+        
+        elif self.mask_policy == "scalable_res":
+            if pr == 0:
+                return torch.zeros_like(scale).to(scale.device)
+            elif pr == len(self.lmbda_list) - 1:
+                return torch.ones_like(scale).to(scale.device)
+            else: 
+                c = torch.zeros_like(scale).to(scale.device)
+                lv = self.M - 32*pr*2 #ho 5 livelli diversi voglio vedere cosa succede
+                c[:,lv:,:,:] = 1.0
+                #print(lv,"--> ",torch.unique(c[:,lv:,:,:]))
+                #print("livello zero: ",torch.unique(c[:,:lv,:,:]))
+                return c.to(scale.device)     
         else:
             raise NotImplementedError()
         
@@ -345,9 +353,8 @@ class ResWACNNIndependentEntropy(ResWACNNSharedEntropy):
             else: 
                 quality = p
 
-            
             mask = self.extract_mask(latent_scales,scale_prog = scales_prog, pr =quality)
-            if self.mask_policy == "learnable-mask": # and self.lmbda_index_list[p]!=0 and self.lmbda_index_list[p]!=len(self.lmbda_list) -1:
+            if "learnable-mask" in self.mask_policy: # and self.lmbda_index_list[p]!=0 and self.lmbda_index_list[p]!=len(self.lmbda_list) -1:
                 if training:
                     samples = mask + (torch.rand_like(mask) - 0.5)
                     mask = samples + samples.round().detach() - samples.detach()  # Differentiable torch.round()   
@@ -759,3 +766,40 @@ class ResWACNNIndependentEntropy(ResWACNNSharedEntropy):
         x_hat = self.g_s(y_hat).clamp_(0, 1)
 
         return {"x_hat": x_hat}
+    
+
+
+
+
+
+"""
+inputs = Input((64, 64, 1))
+conv1 = Conv2D(32, (3, 3), activation='relu', padding='same')(inputs)
+conv1 = Conv2D(32, (3, 3), activation='relu', padding='same')(conv1)
+pool1 = MaxPooling2D(pool_size=(2, 2))(conv1)
+
+conv2 = Conv2D(64, (3, 3), activation='relu', padding='same')(pool1)
+conv2 = Conv2D(64, (3, 3), activation='relu', padding='same')(conv2)
+pool2 = MaxPooling2D(pool_size=(2, 2))(conv2)
+
+conv3 = Conv2D(128, (3, 3), activation='relu', padding='same')(pool2)
+conv3 = Conv2D(128, (3, 3), activation='relu', padding='same')(conv3)
+
+up1 = UpSampling2D(size=(2, 2))(conv3)
+up1 = concatenate([up1, conv2], axis=-1)
+conv4 = Conv2D(64, (3, 3), activation='relu', padding='same')(up1)
+conv4 = Conv2D(64, (3, 3), activation='relu', padding='same')(conv4)
+
+up2 = UpSampling2D(size=(2, 2))(conv4)
+up2 = concatenate([up2, conv1], axis=-1)
+conv5 = Conv2D(32, (3, 3), activation='relu', padding='same')(up2)
+conv5 = Conv2D(32, (3, 3), activation='relu', padding='same')(conv5)
+
+outputs = Conv2D(1, (1, 1), activation='sigmoid')(conv5)
+
+model = Model(inputs=[inputs], outputs=[outputs])
+
+
+
+
+"""

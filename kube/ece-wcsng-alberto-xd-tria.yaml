@@ -1,0 +1,124 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ece-wcsng-alberto-tria
+  namespace: ece-wcsng-xd
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ece-wcsng-alberto-tria
+  template:
+    metadata:
+      labels:
+        app: ece-wcsng-alberto-tria
+    spec:
+      hostname: ece-wcsng-alberto-tria
+      containers:
+      - name: ece-wcsng-alberto-tria
+        image: docker.io/albipresta23/pccompress  #docker.io/zppppppx/pvt-ssd:v6  #gitlab-registry.nrp-nautilus.io/wcsng/wcsng_3dcv_desktop:latest
+        env:
+        - name: TZ
+          value: "UTC"
+        - name: SIZEW
+          value: "1920"
+        - name: SIZEH
+          value: "1200"
+        - name: REFRESH
+          value: "60"
+        - name: DPI
+          value: "96"
+        - name: CDEPTH
+          value: "24"
+        - name: PASSWD
+          valueFrom:
+            secretKeyRef:
+              name: my-pass
+              key: my-pass
+        - name: NOVNC_ENABLE
+          value: "true"
+        - name: WEBRTC_ENCODER
+          value: "x264enc"
+        - name: WEBRTC_ENABLE_RESIZE
+          value: "false"
+        - name: ENABLE_AUDIO
+          value: "true"
+        - name: ENABLE_BASIC_AUTH
+          value: "true"
+        - name: TURN_HOST
+          value: "turn.nrp-nautilus.io"
+        - name: TURN_PORT
+          value: "3478"
+        - name: TURN_SHARED_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: my-pass
+              key: turn-secret
+        - name: TURN_PROTOCOL
+          value: "udp"
+        - name: TURN_TLS
+          value: "false"
+        stdin: true
+        tty: true
+        ports:
+        - name: http
+          containerPort: 8080
+          protocol: TCP
+        resources:
+          limits:
+            memory: 64Gi
+            cpu: "64"
+            nvidia.com/gpu: "1"
+          requests:
+            memory: 64Gi
+            cpu: "64"
+            nvidia.com/gpu: "1"
+        volumeMounts:
+        - mountPath: /dev/shm
+          name: dshm
+        - mountPath: /cache
+          name: egl-cache-vol
+       # - mountPath: /home/user/data
+       #   name: ece-wcsng-pc-alberto-vol
+        - mountPath: /pcc-storage-new
+          name: pcc-storage-new
+      dnsPolicy: None
+      dnsConfig:
+        nameservers:
+        - 8.8.8.8
+        - 8.8.4.4
+      volumes:
+      - name: dshm
+        emptyDir:
+          medium: Memory
+      - name: egl-cache-vol
+        emptyDir: {}
+      #- name: ece-wcsng-pc-alberto-vol
+      #  persistentVolumeClaim:
+      #    claimName: ece-wcsng-pc-alberto-vol
+      - name: pcc-storage-new
+        persistentVolumeClaim:
+          claimName: pcc-storage-new
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: topology.kubernetes.io/zone
+                operator: In
+                values:
+                - unl
+                # GPU specs
+              - key: nvidia.com/gpu.product
+                operator: In
+                values:
+                - NVIDIA-A10
+                - NVIDIA-GeForce-RTX-3090
+                # - NVIDIA-A6000
+
+      tolerations:
+        - effect: NoSchedule
+          key: nautilus.io/nrp-testing
+          operator: Exists
+
+
