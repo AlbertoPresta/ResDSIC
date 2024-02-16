@@ -157,14 +157,9 @@ def main(argv):
 
     test_dataloader = DataLoader(test_dataset, batch_size=args.test_batch_size, num_workers=args.num_workers,shuffle=False,pin_memory=(device == "cuda"),)
 
-    if args.lmbda_list == []:
-        lmbda_list = None
-    else:
-        lmbda_list = args.lmbda_list
 
 
-
-    net = configure_model(args, lmbda_list)
+    net = configure_model(args)
     net = net.to(device)
 
     if args.cuda and torch.cuda.device_count() > 1:
@@ -218,7 +213,8 @@ def main(argv):
     #if args.model != "conditional":
     #    criterion = ScalableRateDistortionLoss(lmbda_list=args.lmbda_list, frozen_base = args.frozen_base)
     #else:
-    criterion = RateDistortionLoss(lmbda=args.lmbda_list[-1])
+    #criterion = RateDistortionLoss(lmbda=args.lmbda_list[-1])
+    criterion = ScalableRateDistortionLoss(lmbda_list = args.lambda_list)
 
     if args.checkpoint != "none" and args.continue_training:    
         print("conitnuo il training!")
@@ -296,7 +292,7 @@ def main(argv):
         if epoch%5==0 or is_best:
 
             net.update()
-            if epoch_enc < 5:
+            if epoch_enc < -1:
                 mask_pol = None 
                 lista = [i  for i in range(len(net.lmbda_list))]
             else: 
@@ -326,7 +322,9 @@ def main(argv):
         else:
             check = "zero"
 
-        name_folder = check + "_" + "_multi_" + str(len(args.lmbda_list)) + "_" + args.model + "_" + args.mask_policy + "_" + str(args.M) +  "_" + str(args.lmbda_list) + str(args.independent_hyperprior)
+        name_folder = check + "_" + "_multi_" + str(len(args.lambda_list)) + "_" + args.model + "_" + args.mask_policy + "_" + str(args.M) + \
+                "_" + str(args.independent_latent_hyperprior)  + \
+                "_" + str(args.independent_blockwise_hyperprior) + "_" + str(args.independent_lrp)
         cartella = os.path.join(args.save_path,name_folder)
 
 

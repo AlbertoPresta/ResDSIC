@@ -32,12 +32,12 @@ class RateDistortionLoss(nn.Module):
 
 class ScalableRateDistortionLoss(nn.Module):
 
-    def __init__(self, weight = 255**2, lmbda_list = [0.75],  device = "cuda", frozen_base = False):
+    def __init__(self, weight = 255**2, lmbda_list = [0.75],  device = "cuda"):
         super().__init__()
         self.scalable_levels = len(lmbda_list)
         self.lmbda = torch.tensor(lmbda_list).to(device) 
         self.weight = weight
-        self.frozen_base = frozen_base
+
 
         
 
@@ -47,18 +47,9 @@ class ScalableRateDistortionLoss(nn.Module):
         out = {}
         num_pixels = batch_size_images * H * W
 
-
-
-
         # Check the batch sizes of images and recon_images
         batch_size_recon = output["x_hat"].shape[0] # num_levels,N
 
-        
-
-
-        #print(batch_size_images,"  ",N)
-
-        # If the batch sizes of images and recon_images are different, adjust the batch size
         if batch_size_recon != 1:
             # Copy images to match the batch size of recon_images
             target = target.unsqueeze(0)
@@ -69,10 +60,8 @@ class ScalableRateDistortionLoss(nn.Module):
 
         if lmbda is  None:
             lmbda = self.lmbda
-
-
-        #print("questi dovrebbero essere uguali: ",extend_images.shape," ",output["x_hat"].shape)
-
+        else:
+            lmbda = torch.tensor(lmbda).to(self.lmbda.device)
 
 
         denominator = -math.log(2) * num_pixels  # (batch_size * perce, 1
@@ -86,18 +75,7 @@ class ScalableRateDistortionLoss(nn.Module):
         out["bpp_base"]= (torch.log(likelihoods["y"].squeeze(0)).sum() + torch.log(likelihoods["z"]).sum())/denominator
         out["bpp_scalable"] = (torch.log(likelihoods["y_prog"]).sum() + torch.log(likelihoods["z_prog"]).sum())/denominator 
 
-
-
-        if self.frozen_base is False:
-            out["bpp_loss"] = out["bpp_scalable"] + batch_size_recon*out["bpp_base"]
-        else:
-            out["bpp_loss"] = out["bpp_scalable"] 
-
-
-
-
-
-
+        out["bpp_loss"] = out["bpp_scalable"] + batch_size_recon*out["bpp_base"]
         out["loss"] = out["bpp_loss"] + self.weight*(lmbda*out["mse_loss"]).mean() 
         return out
 

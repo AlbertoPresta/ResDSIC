@@ -112,7 +112,7 @@ class ResWACNNSharedEntropy(WACNN):
     def load_state_dict(self, state_dict, strict = False):
         
         
-        """
+        
         update_registered_buffers(
             self.entropy_bottleneck_prog,
             "entropy_bottleneck_prog",
@@ -127,7 +127,7 @@ class ResWACNNSharedEntropy(WACNN):
             ["_quantized_cdf", "_offset", "_cdf_length", "scale_table"],
             state_dict,
         )
-        """
+        
         
         super().load_state_dict(state_dict, strict =strict)
 

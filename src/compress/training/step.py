@@ -36,12 +36,13 @@ def train_one_epoch(model, criterion, train_dataloader, optimizer, aux_optimizer
         optimizer.zero_grad()
         aux_optimizer.zero_grad()
 
-        quality =  random.randint(0, len(lmbda_list) - 1)
-        lmbda = lmbda_list[quality]
+        #quality =  random.randint(0, len(lmbda_list) - 1)
+        #lmbda = lmbda_list[quality]
 
-        out_net = model(d, quality = quality )
+        out_net = model(d,training = True)
 
-        out_criterion = criterion(out_net, d, lmbda = lmbda)
+        #out_criterion = criterion(out_net, d, lmbda = lmbda)
+        out_criterion = criterion(out_net, d)
         out_criterion["loss"].backward()
 
 
@@ -58,8 +59,8 @@ def train_one_epoch(model, criterion, train_dataloader, optimizer, aux_optimizer
         loss.update(out_criterion["loss"].clone().detach())
         mse_loss.update(out_criterion["mse_loss"].mean().clone().detach())
         bpp_loss.update(out_criterion["bpp_loss"].clone().detach())
-        #bpp_scalable.update(out_criterion["bpp_scalable"].clone().detach())
-        #bpp_main.update(out_criterion["bpp_base"].clone().detach())
+        bpp_scalable.update(out_criterion["bpp_scalable"].clone().detach())
+        bpp_main.update(out_criterion["bpp_base"].clone().detach())
 
 
         wand_dict = {
@@ -67,8 +68,8 @@ def train_one_epoch(model, criterion, train_dataloader, optimizer, aux_optimizer
             "train_batch/loss": out_criterion["loss"].clone().detach().item(),
             "train_batch/bpp_total": out_criterion["bpp_loss"].clone().detach().item(),
             "train_batch/mse":out_criterion["mse_loss"].mean().clone().detach().item(),
-            #"train_batch/bpp_base":out_criterion["bpp_base"].clone().detach().item(),
-            #"train_batch/bpp_progressive":out_criterion["bpp_scalable"].clone().detach().item(),
+            "train_batch/bpp_base":out_criterion["bpp_base"].clone().detach().item(),
+            "train_batch/bpp_progressive":out_criterion["bpp_scalable"].clone().detach().item(),
 
 
         }
@@ -95,8 +96,8 @@ def train_one_epoch(model, criterion, train_dataloader, optimizer, aux_optimizer
         "train/loss": loss.avg,
         "train/bpp": bpp_loss.avg,
         "train/mse": mse_loss.avg,
-        #"train/bpp_progressive":bpp_scalable.avg,
-        #"train/bpp_base":bpp_main.avg,
+        "train/bpp_progressive":bpp_scalable.avg,
+        "train/bpp_base":bpp_main.avg,
 
         }
         
@@ -145,7 +146,7 @@ def valid_epoch(epoch, test_dataloader,criterion, model, pr_list = [0.05, 0.04, 
                 quality =  p
                 lmbda = model.lmbda_list[quality]
                         
-                out_net = model(d, quality = p)
+                out_net = model(d, quality = p, training = False)
 
   
                 out_criterion = criterion(out_net, d, lmbda = lmbda)
@@ -192,7 +193,7 @@ def test_epoch(epoch, test_dataloader,criterion, model, pr_list = [0.05, 0.04, 0
                 quality =  p
                 lmbda = model.lmbda_list[quality]
                         
-                out_net = model(d, quality =  p)
+                out_net = model(d, training = False, quality =  p)
 
   
                 out_criterion = criterion(out_net, d, lmbda = lmbda)
@@ -251,8 +252,8 @@ def compress_with_ac(model,  filelist, device, epoch, pr_list,   writing = None,
 
                 name = "level_" + str(j)
 
-                data =  model.compress(x_padded, quality =p, mask_pol = None )
-                out_dec = model.decompress(data["strings"], data["shape"], quality = p, mask_pol = None)
+                data =  model.compress(x_padded, quality =p, mask_pol = mask_pol )
+                out_dec = model.decompress(data["strings"], data["shape"], quality = p, mask_pol = mask_pol)
 
                 out_dec["x_hat"] = F.pad(out_dec["x_hat"], unpad)
                 out_dec["x_hat"].clamp_(0.,1.)     

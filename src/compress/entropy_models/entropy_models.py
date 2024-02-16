@@ -2,14 +2,10 @@
 from typing import Any,  List, Optional, Tuple, Union
 import torch
 from torch import Tensor
-
-
-
-
-
-
-
 from compressai.entropy_models import  GaussianConditional
+
+
+
 class GaussianConditionalMask(GaussianConditional):
 
     def __init__(
@@ -34,7 +30,7 @@ class GaussianConditionalMask(GaussianConditional):
                 inputs = inputs - means
             if mask is not None:
                 inputs = inputs*mask
-                #noise = noise*mask # per ora lo lascio rumoroso!
+                noise = noise*mask # per ora lo lascio rumoroso!
             inputs = inputs + noise
 
             if means is not None: 

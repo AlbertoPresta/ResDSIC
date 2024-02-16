@@ -34,12 +34,12 @@ models = {
 
 
 
-def configure_model(args,lmbda_list):
+def configure_model(args):
     if args.model == "conditional":
         net = models[args.model](N = args.N,
                                 M = args.M,
                                 mask_policy = args.mask_policy,
-                                lmbda_list = lmbda_list,
+                                lmbda_list = args.lambda_list,
                                 joiner_policy = args.joiner_policy
                                 )
 
@@ -48,16 +48,24 @@ def configure_model(args,lmbda_list):
         net = models[args.model](N = args.N,
                                 M = args.M,
                                 mask_policy = args.mask_policy,
-                                lmbda_list = lmbda_list,
+                                lmbda_list = args.lambda_list,
                                 joiner_policy = args.joiner_policy,
                                 independent_hyperprior = args.independent_hyperprior
                                 )
       
+    elif args.model == "independent":
+        net = models[args.model](N = args.N, 
+                                 M = args.M,
+                                 mask_policy = args.mask_policy,
+                                 lambda_list = args.lambda_list,
+                                 independent_latent_hyperprior = args.independent_latent_hyperprior,
+                                 independent_blockwise_hyperprior = args.independent_blockwise_hyperprior)
+
     else:
         net = models[args.model](N = args.N,
                                 M = args.M,
                                 mask_policy = args.mask_policy,
-                                lmbda_list = lmbda_list,
+                                lmbda_list = args.lambda_list,
                                 lrp_prog = args.lrp_prog,
                                 independent_lrp = args.ind_lrp,
                                 )

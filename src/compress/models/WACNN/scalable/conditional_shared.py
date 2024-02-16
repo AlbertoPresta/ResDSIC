@@ -59,33 +59,21 @@ class ConditionalSharedWACNN(WACNN):
 
         
         self.gaussian_conditional = GaussianConditional(None)
-        self.gaussian_conditional_prog = GaussianConditionalMask(None)
+        #self.gaussian_conditional_prog = GaussianConditionalMask(None)
+        self.gaussian_conditional_prog = GaussianConditional(None)
     
         self.masking = Mask(self.mask_policy,self.scalable_levels,self.M )
-        """
-        if self.mask_policy == "learnable-mask-gamma":
-            self.gamma = torch.nn.Parameter(torch.ones((self.scalable_levels - 1, self.M))) #il primo e il base layer, lìultimo è il completo!!!
-            self.mask_conv = nn.Sequential(torch.nn.Conv2d(in_channels=self.M*2, out_channels=self.M, kernel_size=1, stride=1),)
-        if self.mask_policy == "learnable-mask-nested":
-            self.mask_conv = nn.ModuleList(
-                            nn.Sequential(torch.nn.Conv2d(in_channels=self.M*2, 
-                                                          out_channels=self.M, 
-                                                          kernel_size=1, 
-                                                          stride=1),)
-                            for _ in range(len(self.lmbda_list) -1)
-            
-                            )
 
-        """
         self.g_a_progressive = nn.Sequential(
-            conv(self.T, N, kernel_size=5, stride=2), # halve 2 so 128
+            conv(self.T, N, kernel_size=5, stride=2), # self.T
             GDN(N),
             conv(N, N, kernel_size=5, stride=2), # halve 4 so 64 k**2 = 16  
-            GDN(N),
+            GDN(N), # qua è la fine
             Win_noShift_Attention(dim=N, num_heads=8, window_size=8, shift_size=4), # 
             conv(N, N, kernel_size=5, stride=2), #halve 8 so dim is 32  k**2 = 64 
             GDN(N),
             conv(N, M, kernel_size=5, stride=2), # 16 
+             Win_noShift_Attention(dim=M, num_heads=8, window_size=4, shift_size=2)
         )
 
 
@@ -237,77 +225,6 @@ class ConditionalSharedWACNN(WACNN):
         return result     
 
 
-    """
-    def extract_mask(self,scale,scale_prog = None,  pr = 0):
-
-        shapes = scale.shape
-        bs, ch, w,h = shapes
-        if self.mask_policy == "point-based-std":
-            if pr == 1.0:
-                return torch.ones_like(scale).to(scale.device)
-            elif pr == 0.0:
-                return torch.zeros_like(scale).to(scale.device)
-            
-            assert scale is not None 
-            pr = 1.0 - pr
-            scale = scale.ravel()
-            quantile = torch.quantile(scale, pr)
-            res = scale >= quantile 
-            #print("dovrebbero essere soli 1: ",torch.unique(res, return_counts = True))
-            return res.reshape(bs,ch,w,h).to(torch.float)
-        elif self.mask_policy == "learnable-mask-gamma":
-            
-            if pr == 0:
-                return torch.zeros_like(scale).to(scale.device)
-
-            assert scale_prog is not None 
-            scale_input = torch.cat([scale,scale_prog],dim = 1)
-            importance_map =  self.mask_conv(scale_input) 
-
-            importance_map = torch.sigmoid(importance_map + 0.5) 
-
-            idx = pr - 1
-            gamma = self.gamma[idx][None, :, None, None]
-            gamma = torch.relu(gamma) 
-
-
-            adjusted_importance_map = torch.pow(importance_map, gamma)
-            #adjusted_importance_map.register_hook(lambda grad: print('adjusted_importance_map back', (grad != grad).any().item()))
-            return adjusted_importance_map          
-
-        elif self.mask_policy == "learnable-mask-nested":
-
-            if pr == 0:
-                return torch.zeros_like(scale).to(scale.device)
-            
-            assert scale_prog is not None 
-            scale_input = torch.cat([scale,scale_prog],dim = 1)
-
-            importance_map = torch.sum(torch.stack([torch.sigmoid(self.mask_conv[i](scale_input)) for i in range(pr)],dim = 0),dim = 0) 
-            importance_map = torch.sigmoid(importance_map)    
-
-            return importance_map       
-
-        elif self.mask_policy == "two-levels":
-            if pr == 0:
-                return torch.zeros_like(scale).to(scale.device)
-            else:
-                return torch.ones_like(scale).to(scale.device)
-        
-        elif self.mask_policy == "scalable_res":
-            if pr == 0:
-                return torch.zeros_like(scale).to(scale.device)
-            elif pr == len(self.lmbda_list) - 1:
-                return torch.ones_like(scale).to(scale.device)
-            else: 
-                c = torch.zeros_like(scale).to(scale.device)
-                lv = self.M - 32*pr*2 
-                c[:,lv:,:,:] = 1.0
-
-                return c.to(scale.device)     
-        else:
-            raise NotImplementedError()
-    """ 
 
     def print_information(self):
         print(" g_a: ",sum(p.numel() for p in self.g_a.parameters()))
@@ -406,6 +323,7 @@ class ConditionalSharedWACNN(WACNN):
 
         y_progressive_support = self.concatenate(y_base,x)
         y_progressive = self.g_a_progressive(y_progressive_support)
+        #print("shape --->",y_progressive.shape)
 
 
         z_likelihoods, latent_scales, latent_means = self.hyperEncoderDecoder(y)
@@ -424,6 +342,10 @@ class ConditionalSharedWACNN(WACNN):
         y_hat_slices = []
         y_hat_slices_prog = []
 
+
+        
+
+
         mask = self.masking(latent_scales,pr = quality)
         if "learnable-mask" in self.mask_policy: # and self.lmbda_index_list[p]!=0 and self.lmbda_index_list[p]!=len(self.lmbda_list) -1:
             mask = self.masking.apply_noise(mask,self.training)
@@ -431,7 +353,7 @@ class ConditionalSharedWACNN(WACNN):
         
         for slice_index, y_slice in enumerate(y_slices):
             support_slices = (y_hat_slices if self.max_support_slices < 0 else y_hat_slices[:self.max_support_slices])
-
+            support_slices_prog = (y_hat_slices_prog if self.max_support_slices < 0 else y_hat_slices_prog[:self.max_support_slices])
             y_progressive_slice = y_progressive_slices[slice_index]
             block_mask = mask_slices[slice_index]
 
@@ -450,15 +372,21 @@ class ConditionalSharedWACNN(WACNN):
             y_hat_slice_main += lrp
 
 
-            mean_support_prog = torch.cat([means_prog] + support_slices, dim=1)
-            scale_support_prog = torch.cat([scales_prog] + support_slices, dim=1)
+            mean_support_prog = torch.cat([means_prog] + support_slices_prog, dim=1)
+            scale_support_prog = torch.cat([scales_prog] + support_slices_prog, dim=1)
             mu_prog, scale_prog = self.extract_mu_and_scale(mean_support_prog, scale_support_prog, slice_index, y_shape)
+
+            #_, y_slice_likelihood_prog = self.gaussian_conditional_prog(y_progressive_slice,
+            #                                                            scale_prog*block_mask,
+            #                                                            means = mu_prog)
+
 
             _, y_slice_likelihood_prog = self.gaussian_conditional_prog(y_progressive_slice, 
                                                                         scale_prog*block_mask,
                                                                         mu_prog,
                                                                         mask = block_mask)
-   
+            if quality == 0:
+                print(torch.min(y_slice_likelihood_prog)," minmax",torch.max(y_slice_likelihood_prog))
             y_likelihood_progressive.append(y_slice_likelihood_prog)
 
             y_hat_slice_progressive = ste_round(y_progressive_slice - mu_prog)*block_mask + mu_prog
@@ -508,8 +436,8 @@ class ConditionalSharedWACNN(WACNN):
         y_shape = y.shape[2:]
 
 
-        y_progressive_support = self.concatenate(y_base,x)
-        y_progressive = self.g_a_progressive(y_progressive_support)
+        #y_progressive_support = self.concatenate(y_base,x)
+        y_progressive = self.g_a_progressive(y_base)
 
         y_shape = y.shape[2:]
 
@@ -575,7 +503,7 @@ class ConditionalSharedWACNN(WACNN):
         for slice_index, y_slice in enumerate(y_slices):
             #part con la parte main 
             support_slices = (y_hat_slices if self.max_support_slices < 0 else y_hat_slices[:self.max_support_slices])
-            
+            support_slices_prog = (y_hat_slices_prog if self.max_support_slices < 0 else y_hat_slices_prog[:self.max_support_slices])
             mean_support = torch.cat([latent_means] + support_slices, dim=1)
             scale_support = torch.cat([latent_scales] + support_slices, dim=1)
             mu, scale = self.extract_mu_and_scale(mean_support, scale_support,slice_index,y_shape)
@@ -596,14 +524,17 @@ class ConditionalSharedWACNN(WACNN):
             block_mask = mask_slices[slice_index]
             y_slice_prog = y_progressive_slices[slice_index]
 
-            mean_support_prog = torch.cat([latent_means_prog] + support_slices, dim=1)
-            scale_support_prog = torch.cat([latent_scales_prog] + support_slices, dim=1)
+            mean_support_prog = torch.cat([latent_means_prog] + support_slices_prog, dim=1)
+            scale_support_prog = torch.cat([latent_scales_prog] + support_slices_prog, dim=1)
             mu_prog, scale_prog = self.extract_mu_and_scale(mean_support_prog, scale_support_prog, slice_index, y_shape)
 
             index_prog = self.gaussian_conditional_prog.build_indexes(scale_prog*block_mask) #saràda aggiungere la maschera
             index_prog = index_prog.int()
 
-            y_q_slice_prog = self.gaussian_conditional_prog.quantize(y_slice_prog, "symbols",mu_prog, mask=block_mask)
+            y_q_slice_prog = (y_slice_prog - mu_prog)*block_mask
+            y_q_slice_prog = self.gaussian_conditional_prog.quantize(y_q_slice_prog, "symbols")
+
+            #y_q_slice_prog = self.gaussian_conditional_prog.quantize(y_slice_prog, "symbols",mu_prog, mask=block_mask)
             y_hat_slice_prog = y_q_slice_prog + mu_prog
 
 

@@ -39,6 +39,8 @@ class WACNN(CompressionModel):
             conv(N, M, kernel_size=5, stride=2), # 16
             Win_noShift_Attention(dim=M, num_heads=8, window_size=4, shift_size=2),
         )
+
+        
         self.g_s = nn.Sequential(
             Win_noShift_Attention(dim=M, num_heads=8, window_size=4, shift_size=2),
             deconv(M, N, kernel_size=5, stride=2),
