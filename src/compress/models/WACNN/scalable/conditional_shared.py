@@ -99,6 +99,7 @@ class ConditionalSharedWACNN(ResWACNNIndependentEntropy):
         print(" h_means_s: ",sum(p.numel() for p in self.h_mean_s.parameters()))
         print(" h_scale_s: ",sum(p.numel() for p in self.h_scale_s.parameters()))
         if self.independent_latent_hyperprior:
+            print("entropy_bottleneck PROG",sum(p.numel() for p in self.entropy_bottleneck_prog.parameters() if p.requires_grad == True))
             print(" h_a_prog: ",sum(p.numel() for p in self.h_a_prog.parameters()))
             print(" h_means_s_prog: ",sum(p.numel() for p in self.h_mean_s_prog.parameters()))
             print(" h_scale_s_prog: ",sum(p.numel() for p in self.h_scale_s_prog.parameters()))
@@ -118,7 +119,7 @@ class ConditionalSharedWACNN(ResWACNNIndependentEntropy):
         print("lrp_transform",sum(p.numel() for p in self.lrp_transforms.parameters()))
 
         print("entropy_bottleneck",sum(p.numel() for p in self.entropy_bottleneck.parameters() if p.requires_grad == True))
-        print("entropy_bottleneck PROG",sum(p.numel() for p in self.entropy_bottleneck_prog.parameters() if p.requires_grad == True))
+        
 
         if "learnable-mask" in self.mask_policy:
             print("mask conv",sum(p.numel() for p in self.masking.mask_conv.parameters()))
@@ -154,10 +155,10 @@ class ConditionalSharedWACNN(ResWACNNIndependentEntropy):
 
 
     # provo a tenere tutti insieme! poi vediamo 
-    def forward(self, x, quality =None, training = True, mask_pol = None):
+    def forward(self, x, quality =None, mask_pol = None):
 
         if mask_pol is None:
-            mask_pol = self.masking
+            mask_pol = self.mask_policy
 
         list_quality = self.define_quality(quality)  
 
@@ -249,8 +250,10 @@ class ConditionalSharedWACNN(ResWACNNIndependentEntropy):
                                                                )
                     
                     
-
-                    _, y_slice_likelihood_prog = self.gaussian_conditional_prog(y_prog_slice, scale_prog*block_mask,mu_prog)
+                    if self.independent_blockwise_hyperprior:
+                        _, y_slice_likelihood_prog = self.gaussian_conditional_prog(y_prog_slice, scale_prog*block_mask,mu_prog)
+                    else:
+                        _, y_slice_likelihood_prog = self.gaussian_conditional(y_prog_slice, scale_prog*block_mask,mu_prog)
 
                     y_likelihood_prog.append(y_slice_likelihood_prog)
 
@@ -298,12 +301,12 @@ class ConditionalSharedWACNN(ResWACNNIndependentEntropy):
             y_likelihoods_prog = torch.cat(y_likelihoods_progressive,dim = 0)
 
         
-        y_hat = torch.cat(y_hats,dim = 0)
+        #y_hat = torch.cat(y_hats,dim = 0)
 
         return {
             "x_hat": x_hat_progressive,
             "likelihoods": {"y": y_likelihoods, "z": z_likelihoods,"z_prog":z_likelihoods_prog,"y_prog":y_likelihoods_prog},
-            "y": y_hat
+            "y": y_hats
         }
     
 
@@ -336,17 +339,20 @@ class ConditionalSharedWACNN(ResWACNNIndependentEntropy):
         decoder.set_stream(y_string)
 
 
-
-        cdf_prog = self.gaussian_conditional_prog.quantized_cdf.tolist()
-        cdf_lengths_prog = self.gaussian_conditional_prog.cdf_length.reshape(-1).int().tolist()
-        offsets_prog = self.gaussian_conditional_prog.offset.reshape(-1).int().tolist()
+        if  self.independent_blockwise_hyperprior:
+            cdf_prog = self.gaussian_conditional_prog.quantized_cdf.tolist()
+            cdf_lengths_prog = self.gaussian_conditional_prog.cdf_length.reshape(-1).int().tolist()
+            offsets_prog = self.gaussian_conditional_prog.offset.reshape(-1).int().tolist()
+        else:
+            cdf_prog = self.gaussian_conditional.quantized_cdf.tolist()
+            cdf_lengths_prog = self.gaussian_conditional.cdf_length.reshape(-1).int().tolist()
+            offsets_prog = self.gaussian_conditional.offset.reshape(-1).int().tolist()
         decoder_prog = RansDecoder()
         decoder_prog.set_stream(y_string_prog)
 
 
         if q != 0:
-
-            z_hat_prog =  self.entropy_bottleneck_prog.decompress(strings[2],shape[-1])#strings[-1]  #self.entropy_bottleneck.decompress(strings[-1],shape[-1])
+           
             
             
             if self.independent_latent_hyperprior:
@@ -405,14 +411,20 @@ class ConditionalSharedWACNN(ResWACNNIndependentEntropy):
                                                                  y_shape,
                                                                  prog =  self.independent_blockwise_hyperprior 
                                                                  )
-
-                index_prog = self.gaussian_conditional_prog.build_indexes(scale_prog*block_mask)
+                if self.independent_blockwise_hyperprior:
+                    index_prog = self.gaussian_conditional_prog.build_indexes(scale_prog*block_mask)
+                else:
+                    index_prog = self.gaussian_conditional.build_indexes(scale_prog*block_mask)
                 index_prog = index_prog.int()
 
 
                 rv_prog = decoder_prog.decode_stream(index_prog.reshape(-1).tolist(), cdf_prog, cdf_lengths_prog, offsets_prog)
                 rv_prog = torch.Tensor(rv_prog).reshape(mu_prog.shape)
-                y_hat_slice_prog = self.gaussian_conditional_prog.dequantize(rv_prog, mu_prog)
+
+                if self.independent_blockwise_hyperprior:
+                    y_hat_slice_prog = self.gaussian_conditional_prog.dequantize(rv_prog, mu_prog)
+                else:
+                    y_hat_slice_prog = self.gaussian_conditional.dequantize(rv_prog, mu_prog)
 
                 #pr_strings = progressive_strings[slice_index]
                 #rv_prog = self.gaussian_conditional_prog.decompress(pr_strings, index_prog, means= mu_prog) # decoder_prog.decode_stream(index_prog.reshape(-1).tolist(), cdf_prog, cdf_lengths_prog, offsets_prog) 

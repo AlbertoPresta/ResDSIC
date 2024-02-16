@@ -6,7 +6,7 @@ palette = sns.color_palette("tab10")
 import matplotlib.pyplot as plt
 import wandb
 import torch 
-def plot_rate_distorsion(bpp_res, psnr_res,epoch):
+def plot_rate_distorsion(bpp_res, psnr_res,epoch, entropy_estimation = "model"):
 
 
     legenda = {}
@@ -86,7 +86,7 @@ def plot_rate_distorsion(bpp_res, psnr_res,epoch):
 
 
     plt.grid(True)
-    wandb.log({"Compression":epoch,
-              "Compression/rate distorsion trade-off": wandb.Image(plt)})
+    wandb.log({entropy_estimation:epoch,
+              entropy_estimation + "/rate distorsion trade-off": wandb.Image(plt)})
     plt.close()  
     print("FINITO")

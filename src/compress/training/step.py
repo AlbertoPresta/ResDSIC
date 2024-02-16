@@ -39,7 +39,7 @@ def train_one_epoch(model, criterion, train_dataloader, optimizer, aux_optimizer
         #quality =  random.randint(0, len(lmbda_list) - 1)
         #lmbda = lmbda_list[quality]
 
-        out_net = model(d,training = True)
+        out_net = model(d)
 
         #out_criterion = criterion(out_net, d, lmbda = lmbda)
         out_criterion = criterion(out_net, d)
@@ -146,7 +146,7 @@ def valid_epoch(epoch, test_dataloader,criterion, model, pr_list = [0.05, 0.04, 
                 quality =  p
                 lmbda = model.lmbda_list[quality]
                         
-                out_net = model(d, quality = p, training = False)
+                out_net = model(d, quality = p)
 
   
                 out_criterion = criterion(out_net, d, lmbda = lmbda)
@@ -176,8 +176,8 @@ def test_epoch(epoch, test_dataloader,criterion, model, pr_list = [0.05, 0.04, 0
     device = next(model.parameters()).device
 
 
-    bpp_loss =[AverageMeter()  for _ in range(len(pr_list) + 2)] 
-    psnr = [AverageMeter()  for _ in range(len(pr_list) + 2)]
+    bpp_loss =[AverageMeter()  for _ in range(len(pr_list))] 
+    psnr = [AverageMeter()  for _ in range(len(pr_list))]
 
 
     #pr_list =  [0] +  pr_list  + [-1]
@@ -191,9 +191,9 @@ def test_epoch(epoch, test_dataloader,criterion, model, pr_list = [0.05, 0.04, 0
 
 
                 quality =  p
-                lmbda = model.lmbda_list[quality]
+                lmbda = model.lmbda_list[0 if quality== 0.0 else 1]
                         
-                out_net = model(d, training = False, quality =  p, mask_pol = mask_pol)
+                out_net = model(d,  quality =  p, mask_pol = mask_pol)
 
   
                 out_criterion = criterion(out_net, d, lmbda = lmbda)
@@ -222,6 +222,7 @@ def test_epoch(epoch, test_dataloader,criterion, model, pr_list = [0.05, 0.04, 0
             }
 
         wandb.log(log_dict)
+    print("il test è: ",[bpp_loss[i].avg for i in range(len(bpp_loss))]," ",[psnr[i].avg for i in range(len(psnr))])
     return [bpp_loss[i].avg for i in range(len(bpp_loss))], [psnr[i].avg for i in range(len(psnr))]
 
 
@@ -248,7 +249,7 @@ def compress_with_ac(model,  filelist, device, epoch, pr_list,   writing = None,
             x_padded = F.pad(x, pad, mode="constant", value=0)
 
             for j,p in enumerate(pr_list):
-                print("******************************* ",p)
+                #print("******************************* ",p)
 
                 name = "level_" + str(j)
 

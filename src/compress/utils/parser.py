@@ -27,7 +27,7 @@ def parse_args(argv):
     parser.add_argument("-ibh","--independent_blockwise_hyperprior", action="store_true", help="Use cuda")
     parser.add_argument("-ilrp","--independent_lrp", action="store_true", help="use common lrp for progressive")
 
-    parser.add_argument("--joiner_policy", type=str, default="concatenation", help="Batch size (default: %(default)s)")
+    parser.add_argument("--joiner_policy", type=str, default="conditional", help="Batch size (default: %(default)s)")
     
     parser.add_argument("--lrp_prog", action="store_true", help="use common lrp for progressive")
     parser.add_argument("--lambda_list", nargs='+', type=float, default = [0.0035,  0.065])

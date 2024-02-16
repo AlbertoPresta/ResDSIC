@@ -315,7 +315,20 @@ def main(argv):
             psnr_res["base"] =   [29.20, 30.57,32.26,34.15,35.91,37.70]
             bpp_res["base"] =  [0.13,0.199,0.309,0.449,0.649,0.895]
 
-            plot_rate_distorsion(bpp_res, psnr_res,epoch_enc)
+            plot_rate_distorsion(bpp_res, psnr_res,epoch_enc, entropy_estimation = "model")
+
+            psnr_res = {}
+            bpp_res = {}
+
+            bpp_res["our"] = bpp
+            psnr_res["our"] = psnr
+            psnr_res["base"] =   [29.20, 30.57,32.26,34.15,35.91,37.70]
+            bpp_res["base"] =  [0.13,0.199,0.309,0.449,0.649,0.895]
+
+            plot_rate_distorsion(bpp_res, psnr_res,epoch_enc, entropy_estimation = "compression")
+
+
+
             epoch_enc += 1
         
         
@@ -327,7 +340,7 @@ def main(argv):
         else:
             check = "zero"
 
-        name_folder = check + "_" + "_multi_" + str(len(args.lambda_list)) + "_" + args.model + "_" + args.mask_policy + "_" + str(args.M) + \
+        name_folder = check + "_" + "_multi_" + str(args.lambda_list) + "_" + args.model + "_" + args.mask_policy + "_" + str(args.M) + \
                 "_" + str(args.independent_latent_hyperprior)  + \
                 "_" + str(args.independent_blockwise_hyperprior) + "_" + str(args.independent_lrp)
         cartella = os.path.join(args.save_path,name_folder)

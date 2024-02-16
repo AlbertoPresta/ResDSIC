@@ -52,10 +52,13 @@ class Mask(nn.Module):
                 return torch.zeros_like(scale).to(scale.device)
             
             assert scale is not None 
-            pr = 1.0 - pr
+            pr_bis = 1.0 - pr
             scale = scale.ravel()
-            quantile = torch.quantile(scale, pr)
+            quantile = torch.quantile(scale, pr_bis)
             res = scale >= quantile 
+            res = res.float()
+
+            #print("original pr: ",pr,"distribution---> ",torch.unique(res,return_counts = True))
             #print("dovrebbero essere soli 1: ",torch.unique(res, return_counts = True))
             return res.reshape(bs,ch,w,h).to(torch.float)
         elif mask_pol == "learnable-mask-gamma":

@@ -58,7 +58,7 @@ class ResWACNNIndependentEntropy(WACNN):
         print("*****----> ",self.lmbda_index_list)
 
 
-        #self.gaussian_conditional_prog = GaussianConditional(None)
+
         self.masking = Mask(self.mask_policy, self.scalable_levels,self.M )
         self.independent_latent_hyperprior = independent_latent_hyperprior 
         self.independent_blockwise_hyperprior = independent_blockwise_hyperprior
@@ -179,18 +179,20 @@ class ResWACNNIndependentEntropy(WACNN):
 
     
         self.entropy_bottleneck = EntropyBottleneck(self.N) #utilizzo lo stesso modello, ma non lo stesso entropy bottleneck
-        self.gaussian_conditional_prog = GaussianConditional(None)
+        if self.independent_blockwise_hyperprior:
+            self.gaussian_conditional_prog = GaussianConditional(None)
 
 
 
 
     def load_state_dict(self, state_dict, strict = False):
-        update_registered_buffers(
-            self.gaussian_conditional_prog,
-            "gaussian_conditional_prog",
-            ["_quantized_cdf", "_offset", "_cdf_length", "scale_table"],
-            state_dict,
-        )
+        if self.independent_blockwise_hyperprior:
+            update_registered_buffers(
+                self.gaussian_conditional_prog,
+                "gaussian_conditional_prog",
+                ["_quantized_cdf", "_offset", "_cdf_length", "scale_table"],
+                state_dict,
+            )
 
         if self.independent_latent_hyperprior:
             update_registered_buffers(
@@ -234,7 +236,7 @@ class ResWACNNIndependentEntropy(WACNN):
             print(" h_scale_s_prog: ",sum(p.numel() for p in self.h_scale_s_prog.parameters()))
 
         print("cc_mean_transforms",sum(p.numel() for p in self.cc_mean_transforms.parameters()))
-        print("cc_scale_transforms",sum(p.numel() for p in self.cc_scale_transforms.parameters()))
+        print("cc_scale_trangsforms",sum(p.numel() for p in self.cc_scale_transforms.parameters()))
         
         if self.independent_blockwise_hyperprior:
             print("cc_mean_transforms_prog",sum(p.numel() for p in self.cc_mean_transforms_prog.parameters()))
@@ -243,7 +245,7 @@ class ResWACNNIndependentEntropy(WACNN):
         print("lrp_transform",sum(p.numel() for p in self.lrp_transforms.parameters()))
 
         print("entropy_bottleneck",sum(p.numel() for p in self.entropy_bottleneck.parameters() if p.requires_grad == True))
-        print("entropy_bottleneck PROG",sum(p.numel() for p in self.entropy_bottleneck_prog.parameters() if p.requires_grad == True))
+        
 
         if "learnable-mask" in self.mask_policy:
             print("mask conv",sum(p.numel() for p in self.masking.mask_conv.parameters()))
@@ -267,11 +269,12 @@ class ResWACNNIndependentEntropy(WACNN):
         if scale_table is None:
             scale_table = get_scale_table()
         updated = self.gaussian_conditional.update_scale_table(scale_table, force=force)
-        updated = self.gaussian_conditional_prog.update_scale_table(scale_table, force=force)
-        #updated |= super().update(force=force)
+        if self.independent_blockwise_hyperprior:
+            updated = self.gaussian_conditional_prog.update_scale_table(scale_table, force=force)
+            #updated |= super().update(force=force)
 
-
-        self.entropy_bottleneck_prog.update()
+        if self.independent_latent_hyperprior:
+            self.entropy_bottleneck_prog.update()
         self.entropy_bottleneck.update()
         return updated
 
@@ -324,7 +327,7 @@ class ResWACNNIndependentEntropy(WACNN):
            
 
     # provo a tenere tutti insieme! poi vediamo 
-    def forward(self, x, quality =None, training = True, mask_pol = None):
+    def forward(self, x, quality =None,  mask_pol = None):
 
         if mask_pol is None:
             mask_pol = self.mask_policy
@@ -359,7 +362,7 @@ class ResWACNNIndependentEntropy(WACNN):
 
             mask = self.masking(latent_scales,pr = quality, mask_pol = mask_pol)
             if "learnable-mask" in self.mask_policy: # and self.lmbda_index_list[p]!=0 and self.lmbda_index_list[p]!=len(self.lmbda_list) -1:
-                mask = self.masking.apply_noise(mask,self.training)
+                mask = self.masking.apply_noise(mask,self.gaussian_conditional.training)
 
             mask_slices = mask.chunk(self.num_slices,dim = 1)                 
             y_progressive_slices = y_progressive.chunk(self.num_slices,dim = 1)
@@ -420,8 +423,10 @@ class ResWACNNIndependentEntropy(WACNN):
                     
                     
                                                          
-                    
-                    _, y_slice_likelihood_prog = self.gaussian_conditional_prog(y_prog_slice, scale_prog*block_mask,mu_prog)
+                    if self.independent_blockwise_hyperprior:
+                        _, y_slice_likelihood_prog = self.gaussian_conditional_prog(y_prog_slice, scale_prog*block_mask,mu_prog)
+                    else:
+                        _, y_slice_likelihood_prog = self.gaussian_conditional(y_prog_slice, scale_prog*block_mask,mu_prog)
 
                     y_likelihood_prog.append(y_slice_likelihood_prog)
 
@@ -530,11 +535,16 @@ class ResWACNNIndependentEntropy(WACNN):
         offsets = self.gaussian_conditional.offset.reshape(-1).int().tolist()
         encoder = BufferedRansEncoder()
 
-
-        cdf_prog = self.gaussian_conditional_prog.quantized_cdf.tolist()
-        cdf_lengths_prog = self.gaussian_conditional_prog.cdf_length.reshape(-1).int().tolist()
-        offsets_prog = self.gaussian_conditional_prog.offset.reshape(-1).int().tolist()
-        encoder_prog = BufferedRansEncoder()
+        if self.independent_blockwise_hyperprior:
+            cdf_prog = self.gaussian_conditional_prog.quantized_cdf.tolist()
+            cdf_lengths_prog = self.gaussian_conditional_prog.cdf_length.reshape(-1).int().tolist()
+            offsets_prog = self.gaussian_conditional_prog.offset.reshape(-1).int().tolist()
+            encoder_prog = BufferedRansEncoder()
+        else:
+            cdf_prog = self.gaussian_conditional.quantized_cdf.tolist()
+            cdf_lengths_prog = self.gaussian_conditional.cdf_length.reshape(-1).int().tolist()
+            offsets_prog = self.gaussian_conditional.offset.reshape(-1).int().tolist()
+            encoder_prog = BufferedRansEncoder()   
 
 
         symbols_list = []
@@ -608,15 +618,19 @@ class ResWACNNIndependentEntropy(WACNN):
                                                                 y_shape,
                                                                 prog = self.independent_blockwise_hyperprior)
 
-
-                index_prog = self.gaussian_conditional_prog.build_indexes(scale_prog*block_mask) #saràda aggiungere la maschera
+                if self.independent_blockwise_hyperprior:
+                    index_prog = self.gaussian_conditional_prog.build_indexes(scale_prog*block_mask) #saràda aggiungere la maschera
+                else:
+                    index_prog = self.gaussian_conditional.build_indexes(scale_prog*block_mask)
                 index_prog = index_prog.int()
 
                 y_q_slice_prog = y_slice_prog - mu_prog 
                 y_q_slice_prog = y_q_slice_prog*block_mask
 
-
-                y_q_slice_prog = self.gaussian_conditional_prog.quantize(y_q_slice_prog, "symbols")
+                if self.independent_blockwise_hyperprior:
+                    y_q_slice_prog = self.gaussian_conditional_prog.quantize(y_q_slice_prog, "symbols")
+                else:
+                    y_q_slice_prog = self.gaussian_conditional.quantize(y_q_slice_prog, "symbols")
                 y_hat_slice_prog = y_q_slice_prog + mu_prog
 
                 symbols_list_prog.extend(y_q_slice_prog.reshape(-1).tolist())
@@ -647,7 +661,7 @@ class ResWACNNIndependentEntropy(WACNN):
         encoder_prog.encode_with_indexes(symbols_list_prog, indexes_list_prog, cdf_prog, cdf_lengths_prog, offsets_prog)
         y_string_prog = encoder_prog.flush()
         y_strings_prog.append(y_string_prog)
-        print("finito encoding")
+        #print("finito encoding")
         
         return {"strings": [y_strings, z_strings, z_string_prog,y_strings_prog],  #preogressive_strings
                 "shape": [z.size()[-2:],z_prog.size()[-2:]],          
@@ -682,10 +696,14 @@ class ResWACNNIndependentEntropy(WACNN):
         decoder.set_stream(y_string)
 
 
-
-        cdf_prog = self.gaussian_conditional_prog.quantized_cdf.tolist()
-        cdf_lengths_prog = self.gaussian_conditional_prog.cdf_length.reshape(-1).int().tolist()
-        offsets_prog = self.gaussian_conditional_prog.offset.reshape(-1).int().tolist()
+        if self.independent_blockwise_hyperprior:
+            cdf_prog = self.gaussian_conditional_prog.quantized_cdf.tolist()
+            cdf_lengths_prog = self.gaussian_conditional_prog.cdf_length.reshape(-1).int().tolist()
+            offsets_prog = self.gaussian_conditional_prog.offset.reshape(-1).int().tolist()
+        else:
+            cdf_prog = self.gaussian_conditional.quantized_cdf.tolist()
+            cdf_lengths_prog = self.gaussian_conditional.cdf_length.reshape(-1).int().tolist()
+            offsets_prog = self.gaussian_conditional.offset.reshape(-1).int().tolist()
         decoder_prog = RansDecoder()
         decoder_prog.set_stream(y_string_prog)
 
@@ -753,13 +771,20 @@ class ResWACNNIndependentEntropy(WACNN):
                                                                  prog =  self.independent_blockwise_hyperprior 
                                                                  )
 
-                index_prog = self.gaussian_conditional_prog.build_indexes(scale_prog*block_mask)
+                
+                if self.independent_blockwise_hyperprior:
+                    index_prog = self.gaussian_conditional_prog.build_indexes(scale_prog*block_mask)
+                else:
+                    index_prog = self.gaussian_conditional.build_indexes(scale_prog*block_mask)
                 index_prog = index_prog.int()
 
 
                 rv_prog = decoder_prog.decode_stream(index_prog.reshape(-1).tolist(), cdf_prog, cdf_lengths_prog, offsets_prog)
                 rv_prog = torch.Tensor(rv_prog).reshape(mu_prog.shape)
-                y_hat_slice_prog = self.gaussian_conditional_prog.dequantize(rv_prog, mu_prog)
+                if self.independent_blockwise_hyperprior:
+                    y_hat_slice_prog = self.gaussian_conditional_prog.dequantize(rv_prog, mu_prog)
+                else:
+                    y_hat_slice_prog = self.gaussian_conditional.dequantize(rv_prog, mu_prog)
 
                 #pr_strings = progressive_strings[slice_index]
                 #rv_prog = self.gaussian_conditional_prog.decompress(pr_strings, index_prog, means= mu_prog) # decoder_prog.decode_stream(index_prog.reshape(-1).tolist(), cdf_prog, cdf_lengths_prog, offsets_prog) 
