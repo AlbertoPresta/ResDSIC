@@ -11,7 +11,7 @@ from compress.layers import conv3x3, subpel_conv3x3
 from compress.layers.mask_layer import Mask
 from compressai.entropy_models import EntropyBottleneck, GaussianConditional
 from compress.entropy_models import GaussianConditionalMask
-from ..utils import conv, deconv
+from ..utils import conv, deconv, update_registered_buffers
 from ..cnn import WACNN # import WACNN
 # From Balle's tensorflow compression examples
 SCALES_MIN = 0.11
@@ -76,6 +76,9 @@ class ResWACNNIndependentEntropy(WACNN):
         )
 
         if self.independent_latent_hyperprior:
+
+            self.entropy_bottleneck_prog = EntropyBottleneck(self.N)
+
             self.h_a_prog = nn.Sequential(
                 conv3x3(320, 320),
                 nn.GELU(),
@@ -175,10 +178,29 @@ class ResWACNNIndependentEntropy(WACNN):
         
 
     
-        self.entropy_bottleneck_prog = EntropyBottleneck(self.N) #utilizzo lo stesso modello, ma non lo stesso entropy bottleneck
+        self.entropy_bottleneck = EntropyBottleneck(self.N) #utilizzo lo stesso modello, ma non lo stesso entropy bottleneck
         self.gaussian_conditional_prog = GaussianConditional(None)
 
 
+
+
+    def load_state_dict(self, state_dict, strict = False):
+        update_registered_buffers(
+            self.gaussian_conditional_prog,
+            "gaussian_conditional_prog",
+            ["_quantized_cdf", "_offset", "_cdf_length", "scale_table"],
+            state_dict,
+        )
+
+        if self.independent_latent_hyperprior:
+            update_registered_buffers(
+                self.entropy_bottleneck_prog,
+                "entropy_bottleneck_prog",
+                ["_quantized_cdf", "_offset", "_cdf_length", "scale_table"],
+                state_dict,
+            )       
+        
+        super().load_state_dict(state_dict, strict = strict)
 
     def concatenate(self, y_base, x):
         bs,c,w,h = y_base.shape 
@@ -206,6 +228,7 @@ class ResWACNNIndependentEntropy(WACNN):
         print(" h_means_s: ",sum(p.numel() for p in self.h_mean_s.parameters()))
         print(" h_scale_s: ",sum(p.numel() for p in self.h_scale_s.parameters()))
         if self.independent_latent_hyperprior:
+            print("entropy_bottleneck PROG",sum(p.numel() for p in self.entropy_bottleneck_prog.parameters() if p.requires_grad == True))
             print(" h_a_prog: ",sum(p.numel() for p in self.h_a_prog.parameters()))
             print(" h_means_s_prog: ",sum(p.numel() for p in self.h_mean_s_prog.parameters()))
             print(" h_scale_s_prog: ",sum(p.numel() for p in self.h_scale_s_prog.parameters()))
@@ -301,7 +324,10 @@ class ResWACNNIndependentEntropy(WACNN):
            
 
     # provo a tenere tutti insieme! poi vediamo 
-    def forward(self, x, quality =None, training = True):
+    def forward(self, x, quality =None, training = True, mask_pol = None):
+
+        if mask_pol is None:
+            mask_pol = self.mask_policy
 
         list_quality = self.define_quality(quality)  
 
@@ -315,7 +341,7 @@ class ResWACNNIndependentEntropy(WACNN):
         z_likelihoods, latent_means, latent_scales = self.hyperEncoderDecoder(y)
 
         z_likelihoods_prog, means_prog, scales_prog = self.hyperEncoderDecoder(y_progressive, 
-                                                                               self.independent_latent_hyperprior )
+                                                                               progressive = self.independent_latent_hyperprior )
 
         y_slices = y.chunk(self.num_slices, 1)
 
@@ -331,7 +357,7 @@ class ResWACNNIndependentEntropy(WACNN):
             else: 
                 quality = p
 
-            mask = self.masking(latent_scales,pr = quality)
+            mask = self.masking(latent_scales,pr = quality, mask_pol = mask_pol)
             if "learnable-mask" in self.mask_policy: # and self.lmbda_index_list[p]!=0 and self.lmbda_index_list[p]!=len(self.lmbda_list) -1:
                 mask = self.masking.apply_noise(mask,self.training)
 
@@ -393,14 +419,7 @@ class ResWACNNIndependentEntropy(WACNN):
                                                                )
                     
                     
-                    y_pr_sl_no_mean = self.gaussian_conditional_prog.quantize(y_prog_slice, "noise" if training else "dequantize",
-                                                                               mu_prog)
-                    #y_pr_sl_no_mean = (y_pr_sl_no_mean - mu_prog)*block_mask
-
-                    #scale_prog = self.gaussian_conditional.lower_bound_scale(scale_prog*block_mask)
-                    #y_slice_likelihood_prog = self.gaussian_conditional_prog._likelihood(y_pr_sl_no_mean,
-                    #                                                            scale_prog,
-                    #                                                            )
+                                                         
                     
                     _, y_slice_likelihood_prog = self.gaussian_conditional_prog(y_prog_slice, scale_prog*block_mask,mu_prog)
 
@@ -550,7 +569,7 @@ class ResWACNNIndependentEntropy(WACNN):
         y_progressive_slices = y_progressive.chunk(self.num_slices,dim = 1)
         y_hat_prog = []
 
-        progressive_strings = []
+
         for slice_index, y_slice in enumerate(y_slices):
             #part con la parte main 
             support_slices = (y_hat_slices if self.max_support_slices < 0 else y_hat_slices[:self.max_support_slices])
@@ -673,13 +692,16 @@ class ResWACNNIndependentEntropy(WACNN):
 
         if q != 0:
 
-            z_hat_prog =  self.entropy_bottleneck_prog.decompress(strings[2],shape[-1])#strings[-1]  #self.entropy_bottleneck.decompress(strings[-1],shape[-1])
+            
+            #strings[-1]  #self.entropy_bottleneck.decompress(strings[-1],shape[-1])
             
             
             if self.independent_latent_hyperprior:
+                z_hat_prog =  self.entropy_bottleneck_prog.decompress(strings[2],shape[-1])
                 latent_scales_prog = self.h_scale_s_prog(z_hat_prog)
                 latent_means_prog = self.h_mean_s_prog(z_hat_prog)
             else:
+                z_hat_prog =  self.entropy_bottleneck.decompress(strings[2],shape[-1])
                 latent_scales_prog = self.h_scale_s(z_hat_prog)
                 latent_means_prog = self.h_mean_s(z_hat_prog)
 

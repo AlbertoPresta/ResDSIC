@@ -281,7 +281,12 @@ def main(argv):
         lr_scheduler.step(loss)
         print(f'Current patience level: {lr_scheduler.patience - lr_scheduler.num_bad_epochs}')
 
-        _, _ = test_epoch(epoch, test_dataloader,criterion, net, pr_list = lista)
+        bpp_test, psnr_test = test_epoch(epoch,
+                                        test_dataloader,
+                                        criterion,
+                                        net,
+                                        pr_list = [0.0,0.2,0.4,0.6,0.8,1.0], 
+                                        mask_pol ="point-based-std" )
         print("finito il test della epoca")
 
         is_best = loss < best_loss
@@ -304,8 +309,8 @@ def main(argv):
             psnr_res = {}
             bpp_res = {}
 
-            bpp_res["our"] = bpp
-            psnr_res["our"] = psnr
+            bpp_res["our"] = bpp_test
+            psnr_res["our"] = psnr_test
 
             psnr_res["base"] =   [29.20, 30.57,32.26,34.15,35.91,37.70]
             bpp_res["base"] =  [0.13,0.199,0.309,0.449,0.649,0.895]

@@ -171,7 +171,7 @@ def valid_epoch(epoch, test_dataloader,criterion, model, pr_list = [0.05, 0.04, 
     return loss.avg
 
 
-def test_epoch(epoch, test_dataloader,criterion, model, pr_list = [0.05, 0.04, 0.03,0.02,0.01]):
+def test_epoch(epoch, test_dataloader,criterion, model, pr_list = [0.05, 0.04, 0.03,0.02,0.01], mask_pol = None):
     model.eval()
     device = next(model.parameters()).device
 
@@ -193,7 +193,7 @@ def test_epoch(epoch, test_dataloader,criterion, model, pr_list = [0.05, 0.04, 0
                 quality =  p
                 lmbda = model.lmbda_list[quality]
                         
-                out_net = model(d, training = False, quality =  p)
+                out_net = model(d, training = False, quality =  p, mask_pol = mask_pol)
 
   
                 out_criterion = criterion(out_net, d, lmbda = lmbda)

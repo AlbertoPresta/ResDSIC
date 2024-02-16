@@ -45,13 +45,14 @@ def configure_model(args):
 
     
     elif args.model == "conditional_shared":
-        net = models[args.model](N = args.N,
-                                M = args.M,
-                                mask_policy = args.mask_policy,
-                                lmbda_list = args.lambda_list,
-                                joiner_policy = args.joiner_policy,
-                                independent_hyperprior = args.independent_hyperprior
-                                )
+        net = models[args.model](N = args.N, 
+                                 M = args.M,
+                                 mask_policy = args.mask_policy,
+                                 joiner_policy = args.joiner_policy,
+                                 lambda_list = args.lambda_list,
+                                 independent_latent_hyperprior = args.independent_latent_hyperprior,
+                                 independent_blockwise_hyperprior = args.independent_blockwise_hyperprior
+        )
       
     elif args.model == "independent":
         net = models[args.model](N = args.N, 

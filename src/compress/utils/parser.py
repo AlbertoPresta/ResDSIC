@@ -9,7 +9,7 @@ def parse_args(argv):
     parser.add_argument( "--batch_size", type=int, default=16, help="Batch size (default: %(default)s)")
 
     parser.add_argument("--clip_max_norm",default=1.0,type=float,help="gradient clipping max norm (default: %(default)s",)
-    parser.add_argument("--checkpoint", type=str, default = "/scratch/ResDSIC/starting_models/indcomlrp/last.pth.tar",help="Path to a checkpoint") #"/scratch/universal-dic/weights/q1/model.pth"
+    parser.add_argument("--checkpoint", type=str, default = "none",help="Path to a checkpoint") #"/scratch/universal-dic/weights/q1/model.pth"
     parser.add_argument("--cuda", action="store_true", help="Use cuda")
     parser.add_argument("--continue_training", action="store_true", help="continue training of the checkpoint")
 
@@ -35,7 +35,7 @@ def parse_args(argv):
 
     parser.add_argument("--M", type=int, default=320, help="Batch size (default: %(default)s)")
     parser.add_argument("--mask_policy", type=str, default="two-levels", help="Batch size (default: %(default)s)") #sssswssss
-    parser.add_argument("-m","--model",default="independent",choices=models.keys(),help="Model architecture (default: %(default)s)",)
+    parser.add_argument("-m","--model",default="conditional_shared",choices=models.keys(),help="Model architecture (default: %(default)s)",)
     
     parser.add_argument("-n","--num-workers",type=int,default=8,help="Dataloaders threads (default: %(default)s)",)
     parser.add_argument("--num_images", type=int, default=300000, help="Batch size (default: %(default)s)")
