@@ -200,14 +200,11 @@ class WACNN(CompressionModel):
         )
 
         update_registered_buffers(
-            self.gaussian_conditional,
-            "gaussian_conditional_prog",
+            self.entropy_bottleneck,
+            "entropy_bottleneck",
             ["_quantized_cdf", "_offset", "_cdf_length", "scale_table"],
             state_dict,
         )
-    
-
-
         super().load_state_dict(state_dict, strict = strict)
 
     @classmethod

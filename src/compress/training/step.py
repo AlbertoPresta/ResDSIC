@@ -2,6 +2,7 @@ import torch
 import wandb
 from compress.utils.functions import AverageMeter, read_image
 import math 
+import random
 from pytorch_msssim import ms_ssim
 import torch.nn.functional as F 
 from compressai.ops import compute_padding
@@ -15,7 +16,15 @@ def compute_msssim(a, b):
     return ms_ssim(a, b, data_range=1.).item()
 
 
-def train_one_epoch(model, criterion, train_dataloader, optimizer, aux_optimizer, epoch, counter,clip_max_norm = 1.0):
+def train_one_epoch(model, 
+                    criterion, 
+                    train_dataloader,
+                      optimizer, 
+                      aux_optimizer, 
+                      epoch, 
+                      counter,
+                      sampling_training = False,
+                      clip_max_norm = 1.0):
     model.train()
     device = next(model.parameters()).device
 
@@ -28,16 +37,26 @@ def train_one_epoch(model, criterion, train_dataloader, optimizer, aux_optimizer
 
 
 
-
+    lmbda_list = model.lmbda_list
     for i, d in enumerate(train_dataloader):
         d = d.to(device)
 
         optimizer.zero_grad()
         aux_optimizer.zero_grad()
 
-        out_net = model(d)
+        if sampling_training:
 
-        out_criterion = criterion(out_net, d)
+            quality =  random.randint(0, len(lmbda_list) - 1)
+            lmbda = lmbda_list[quality]
+            out_net = model(d, quality = quality)
+            out_criterion = criterion(out_net, d, lmbda = lmbda)
+        else:
+            out_net = model(d)
+            out_criterion = criterion(out_net, d)
+
+
+
+
         out_criterion["loss"].backward()
 
 
@@ -119,7 +138,7 @@ def criterion_test(output,target):
     
 
 
-def valid_epoch(epoch, test_dataloader,criterion, model, pr_list = [0.05, 0.04, 0.03,0.02,0.01]):
+def valid_epoch(epoch, test_dataloader,criterion, model, pr_list = [0.05, 0.04, 0.03,0.02,0.01], mask_pol = None):
     #pr_list =  [0] +  pr_list  + [-1]
     model.eval()
     device = next(model.parameters()).device
@@ -137,7 +156,7 @@ def valid_epoch(epoch, test_dataloader,criterion, model, pr_list = [0.05, 0.04, 
 
             for _,p in enumerate(pr_list):
                 
-                out_net = model(d, quality = p)
+                out_net = model(d, quality = p, mask_pol = mask_pol, training = False)
 
   
                 out_criterion = criterion(out_net, d, lmbda = p)
@@ -162,7 +181,7 @@ def valid_epoch(epoch, test_dataloader,criterion, model, pr_list = [0.05, 0.04, 
     return loss.avg
 
 
-def test_epoch(epoch, test_dataloader,criterion, model, pr_list = [0.05, 0.04, 0.03,0.02,0.01]):
+def test_epoch(epoch, test_dataloader,criterion, model, pr_list = [0.05, 0.04, 0.03,0.02,0.01], mask_pol = None):
     model.eval()
     device = next(model.parameters()).device
 
@@ -181,7 +200,7 @@ def test_epoch(epoch, test_dataloader,criterion, model, pr_list = [0.05, 0.04, 0
             for j,p in enumerate(pr_list):
 
                 
-                out_net = model(d,  p)
+                out_net = model(d,  p, mask_pol = mask_pol,  training = False)
 
   
                 out_criterion = criterion(out_net, d, lmbda = p)
@@ -200,7 +219,7 @@ def test_epoch(epoch, test_dataloader,criterion, model, pr_list = [0.05, 0.04, 0
         elif i == len(pr_list) - 1:
             name = "test_complete"
         else:
-            c = str(model.lmbda_index_list[pr_list[i]])
+            c = str(pr_list[i])
             name = "test_quality_" + c 
         
         log_dict = {
@@ -213,7 +232,7 @@ def test_epoch(epoch, test_dataloader,criterion, model, pr_list = [0.05, 0.04, 0
     return [bpp_loss[i].avg for i in range(len(bpp_loss))], [psnr[i].avg for i in range(len(psnr))]
 
 
-def compress_with_ac(model,  filelist, device, epoch, pr_list = [0.05,0.04,0.03,0.02,0.01],   writing = None):
+def compress_with_ac(model,  filelist, device, epoch, pr_list = [0.05,0.04,0.03,0.02,0.01], mask_pol = None,  writing = None):
     #pr_list = [0] + pr_list + [-1]
     #model.update(None, device)
     l = len(pr_list)
@@ -239,8 +258,8 @@ def compress_with_ac(model,  filelist, device, epoch, pr_list = [0.05,0.04,0.03,
 
                 name = "level_" + str(j)
 
-                data =  model.compress(x_padded, quality =p )
-                out_dec = model.decompress(data["strings"], data["shape"], quality = p)
+                data =  model.compress(x_padded, quality =p, mask_pol = mask_pol )
+                out_dec = model.decompress(data["strings"], data["shape"], quality = p, mask_pol = mask_pol)
 
                 out_dec["x_hat"] = F.pad(out_dec["x_hat"], unpad)
                 out_dec["x_hat"].clamp_(0.,1.)     
@@ -258,7 +277,7 @@ def compress_with_ac(model,  filelist, device, epoch, pr_list = [0.05,0.04,0.03,
                 data_string = data["strings"][:2]
                 bpp = sum(len(s[0]) for s in data_string) * 8.0 / num_pixels
 
-                if model.lmbda_index_list[p] != 0:
+                if p != 0:
                     data_string_hype = data["strings"][2]
                     bpp_hype = sum(len(s) for s in data_string_hype) * 8.0 / num_pixels
 
@@ -283,7 +302,7 @@ def compress_with_ac(model,  filelist, device, epoch, pr_list = [0.05,0.04,0.03,
             elif i == len(pr_list) - 1:
                 name = "compress_complete"
             else:
-                c = str(model.lmbda_index_list[pr_list[i]])
+                c = str(pr_list[i])
                 name = "compress_quality_" + c
             
             log_dict = {

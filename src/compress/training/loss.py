@@ -32,6 +32,7 @@ class ScalableRateDistortionLoss(nn.Module):
         self.scalable_levels = len(lmbda_list)
         self.lmbda = torch.tensor(lmbda_list).to(device) 
         self.weight = weight
+        self.device = device
 
         
 
@@ -63,6 +64,8 @@ class ScalableRateDistortionLoss(nn.Module):
 
         if lmbda is  None:
             lmbda = self.lmbda
+        else:
+            lmbda = torch.tensor([lmbda]).to(self.device)
 
 
         #print("questi dovrebbero essere uguali: ",extend_images.shape," ",output["x_hat"].shape)
@@ -77,7 +80,7 @@ class ScalableRateDistortionLoss(nn.Module):
 
         likelihoods = output["likelihoods"]
 
-        out["bpp_base"]= (torch.log(likelihoods["y"].squeeze(0)).sum() + torch.log(likelihoods["z"]).sum())/denominator
+        out["bpp_base"] = (torch.log(likelihoods["y"].squeeze(0)).sum() + torch.log(likelihoods["z"]).sum())/denominator
         out["bpp_scalable"] = (torch.log(likelihoods["y_prog"]).sum() + torch.log(likelihoods["z_prog"]).sum())/denominator 
 
         #out["bpp_scalable"] = torch.zeros_like(out["bpp_base"]).to(out["bpp_base"].device)#

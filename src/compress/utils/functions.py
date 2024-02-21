@@ -34,25 +34,10 @@ class AverageMeter:
 
 
 
-def create_savepath(args,epoch,base_path):
-    now = datetime.now()
-    date_time = now.strftime("%m%d")
-    c = join(date_time,"_lambda_",str(args.lmbda_starter),"_epoch_",str(epoch)).replace("/","_")
-
-    
-    c_best = join(c,"best").replace("/","_")
-    c = join(c,".pth.tar").replace("/","_")
-    c_best = join(c_best,".pth.tar").replace("/","_")
-    
-    
-    
-    savepath = join(base_path,c)
-    savepath_best = join(base_path,c_best)
-    
-    print("savepath: ",savepath)
-    print("savepath best: ",savepath_best)
+def create_savepath(base_path):
     very_best  = join(base_path,"_very_best.pth.tar")
-    return savepath, savepath_best, very_best
+    last = join(base_path,"_last.pth.tar")
+    return very_best, last
 
 
 

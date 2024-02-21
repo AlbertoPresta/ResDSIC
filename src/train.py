@@ -66,8 +66,7 @@ def configure_optimizers(net, args):
         if n.endswith(".quantiles") and p.requires_grad
     }
 
-    print("dio porco: ",len(aux_parameters))
-    print("zio porco: ",aux_parameters)
+
 
 
 
@@ -92,16 +91,17 @@ def configure_optimizers(net, args):
 
 
 
-def save_checkpoint(state, is_best, filename,filename_best,very_best):
+def save_checkpoint(state, is_best, last_pth,very_best):
 
 
     if is_best:
-        torch.save(state, filename_best)
+        print("ohhuuuuuuuuuuuuuu veramente il best-------------Z ",very_best)
         torch.save(state, very_best)
+        #torch.save(state, very_best)
         wandb.save(very_best)
     else:
-        torch.save(state, filename)
-
+        torch.save(state, last_pth)
+        wandb.save(last_pth)
 
 
 def main(argv):
@@ -152,15 +152,29 @@ def main(argv):
 
 
 
-    
-    net = models[args.model]( N = args.N,
-                             M = args.M,
-                            scalable_levels = args.scalable_levels, 
-                              mask_policy = args.mask_policy,
-                              lmbda_list = lmbda_list,
-                              lrp_prog = args.lrp_prog,
-                              independent_lrp = args.ind_lrp
-                             )
+    if args.model != "cond_ind":
+        net = models[args.model]( N = args.N,
+                                M = args.M,
+                                scalable_levels = args.scalable_levels, 
+                                mask_policy = args.mask_policy,
+                                lmbda_list = lmbda_list,
+                                lrp_prog = args.lrp_prog,
+                                independent_lrp = args.ind_lrp,
+                                multiple_decoder = args.multiple_decoder
+                                )
+    else:
+        net = models[args.model]( N = args.N,
+                                M = args.M,
+                                scalable_levels = args.scalable_levels, 
+                                mask_policy = args.mask_policy,
+                                lmbda_list = lmbda_list,
+                                lrp_prog = args.lrp_prog,
+                                independent_lrp = args.ind_lrp,
+                                multiple_decoder = args.multiple_decoder,
+                                joiner_policy = args.joiner_policy
+                                )
+
+
     net = net.to(device)
 
     if args.cuda and torch.cuda.device_count() > 1:
@@ -205,16 +219,37 @@ def main(argv):
         #print(f"Learning rate: {optimizer.param_groups[0]['lr']}")
         num_tainable = net.print_information()
         if num_tainable > 0:
-            counter = train_one_epoch( net, criterion, train_dataloader, optimizer, aux_optimizer, epoch, counter)
+            counter = train_one_epoch( net, 
+                                      criterion, 
+                                      train_dataloader, 
+                                      optimizer, 
+                                      aux_optimizer, 
+                                      epoch, 
+                                      counter,
+                                      sampling_training = args.sampling_training)
             
         print("finito il train della epoca")
-        loss = valid_epoch(epoch, valid_dataloader,criterion, net, pr_list = net.lmbda_list)
+        loss = valid_epoch(epoch, valid_dataloader,criterion, net, pr_list = [0,1,2,3])
         print("finito il valid della epoca")
 
         lr_scheduler.step(loss)
         print(f'Current patience level: {lr_scheduler.patience - lr_scheduler.num_bad_epochs}')
+        
 
-        _ = test_epoch(epoch, test_dataloader,criterion, net, pr_list = net.lmbda_list)
+        if epoch_enc > 5 and args.mask_policy != "learnable-mask-nested":
+            list_pr = [0,0.2,0.5,0.7,1]
+            mask_pol = "point-based-std" 
+        else:
+            list_pr = [0,1,2,3]  if  args.mask_policy == "learnable-mask-nested" else [0,1] #ddd
+            mask_pol = None           
+
+
+        _ = test_epoch(epoch, 
+                       test_dataloader,
+                       criterion, 
+                       net, 
+                       pr_list = list_pr ,  
+                       mask_pol = mask_pol)
         print("finito il test della epoca")
 
         is_best = loss < best_loss
@@ -222,8 +257,14 @@ def main(argv):
 
         if epoch%5==0 or is_best:
             net.update()
-
-            bpp, psnr = compress_with_ac(net,  filelist, device, epoch = epoch_enc, pr_list = net.lmbda_list,   writing = None)
+            #net.lmbda_list
+            bpp, psnr = compress_with_ac(net,  
+                                         filelist, 
+                                         device,
+                                           epoch = epoch_enc, 
+                                           pr_list =list_pr,  
+                                            mask_pol = mask_pol,
+                                            writing = None)
             psnr_res = {}
             bpp_res = {}
 
@@ -242,27 +283,30 @@ def main(argv):
             check = "pret"
         else:
             check = "zero"
-        # creating savepath
-        name_folder = check + "_" + "_" + str(args.scalable_levels) + "_" + args.model + "_" + args.mask_policy + "_" + str(args.M) + "_" + str(args.N)  + "_" + str(args.lmbda_list[0]) + "_" + str(args.lmbda_list[-1]) +"_" + str(args.freeze) 
+
+        stringa_lambda = ""
+        for lamb in args.lmbda_list:
+            stringa_lambda = stringa_lambda  + "_" + str(lamb)
+
+
+        name_folder = check + "_" + "_multi_" + stringa_lambda + "_" + args.model + "_" +  \
+            args.mask_policy +  "_" +   str(args.lrp_prog) + str(args.joiner_policy) + "_" + str(args.sampling_training)
         cartella = os.path.join(args.save_path,name_folder)
 
 
         if not os.path.exists(cartella):
             os.makedirs(cartella)
-            print(f"Cartella '{cartella}' creata con successo.") 
+            print(f"Cartella '{cartella}' creata con successo.")  #ddddfffffrirririririr
         else:
             print(f"La cartella '{cartella}' esiste già.")
 
 
-
-        filename, filename_best, very_best =  create_savepath(args, epoch, cartella)
-
+        last_pth, very_best =  create_savepath( cartella)
 
 
-        if (is_best is True and epoch > 10) or epoch%10==0: #args.save:
-            print("io qua devo entrare però!!!")
-            net.update()
-            save_checkpoint(
+
+        #if is_best is True or epoch%10==0 or epoch > 98: #args.save:
+        save_checkpoint(
                 {
                     "epoch": epoch,
                     "state_dict": net.state_dict(),
@@ -273,18 +317,17 @@ def main(argv):
                     "epoch":epoch
                 },
                 is_best,
-                filename,
-                filename_best,
+                last_pth,
                 very_best
                 )
-
-        print("log also the current leraning rate")
 
         log_dict = {
         "train":epoch,
         "train/leaning_rate": optimizer.param_groups[0]['lr']
         #"train/beta": annealing_strategy_gaussian.bet
         }
+
+        wandb.log(log_dict)
 
 
 

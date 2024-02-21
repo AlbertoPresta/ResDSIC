@@ -1,7 +1,7 @@
 import math
 import torch
 import torch.nn as nn
-
+from compress.layers.mask_layers import Mask
 from compressai.ans import BufferedRansEncoder, RansDecoder
 from compress.entropy_models import EntropyBottleneck, GaussianConditional #fff
 from compress.layers import GDN
@@ -28,9 +28,6 @@ class ResWACNNSharedEntropy(WACNN):
                 scalable_levels = 4,
                 mask_policy = "learnable-mask",
                 lmbda_list = None,
-                lmbda_starter = 0.075,
-                lrp_prog = None,
-                independent_lrp = None,
                 **kwargs):
         super().__init__(N = N, M = M, **kwargs)
 
@@ -44,7 +41,7 @@ class ResWACNNSharedEntropy(WACNN):
         self.mask_policy = mask_policy
         if lmbda_list is None:
             self.scalable_levels = scalable_levels
-            self.lmbda_list = torch.tensor([round(lmbda_starter*(2**(-i)),4) for i in range(self.scalable_levels)][::-1])
+            self.lmbda_list = torch.tensor([round(0.065*(2**(-i)),4) for i in range(self.scalable_levels)][::-1])
             self.lmbda_list = self.lmbda_list.tolist()
             self.lmbda_index_list = dict(zip(self.lmbda_list[::-1], [i  for i in range(len(self.lmbda_list))] ))
         else:  
@@ -73,12 +70,8 @@ class ResWACNNSharedEntropy(WACNN):
             conv(N, M, kernel_size=5, stride=2), # 16 
         )
 
-
-        if self.mask_policy == "learnable-mask":
-            self.gamma = torch.nn.Parameter(torch.ones((self.scalable_levels - 1, self.M))) #il primo e il base layer
-            self.mask_conv = nn.Sequential(torch.nn.Conv2d(in_channels=self.M, out_channels=self.M, kernel_size=1, stride=1),)
-
-
+        self.masking = Mask(self.mask_policy, self.scalable_levels,self.M )
+        
 
     def aux_loss(self):
         """Return the aggregated loss over the auxiliary entropy bottleneck
@@ -110,7 +103,7 @@ class ResWACNNSharedEntropy(WACNN):
         print("entropy_bottleneck PROG",sum(p.numel() for p in self.entropy_bottleneck_prog.parameters() if p.requires_grad == True))
 
         if self.mask_policy== "learnable-mask":
-            print("mask conv",sum(p.numel() for p in self.mask_conv.parameters()))
+            print("mask conv",sum(p.numel() for p in self.masking.mask_conv.parameters()))
            
 
         print("**************************************************************************")
@@ -207,9 +200,9 @@ class ResWACNNSharedEntropy(WACNN):
             #print("dovrebbero essere soli 1: ",torch.unique(res, return_counts = True))
             return res.reshape(bs,ch,w,h).to(torch.float)
         elif self.mask_policy == "learnable-mask":
-            if self.lmbda_index_list[pr] == 0:
+            if pr == 0:
                 return torch.zeros_like(scale).to(scale.device)
-            if self.lmbda_index_list[pr] == len(self.lmbda_list) -1:
+            if pr == len(self.lmbda_list) -1:
                 return torch.ones_like(scale).to(scale.device)
   
             importance_map =  self.mask_conv(scale) 
@@ -227,7 +220,7 @@ class ResWACNNSharedEntropy(WACNN):
         elif self.mask_policy == "all-zero":
             return torch.zeros_like(scale).to(scale.device)
         elif self.mask_policy == "two-levels":
-            if self.lmbda_index_list[pr] == 0:
+            if pr == 0:
                 return torch.zeros_like(scale).to(scale.device)
             else:
                 return torch.ones_like(scale).to(scale.device)
