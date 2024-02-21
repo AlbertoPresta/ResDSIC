@@ -12,8 +12,5 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from .entropy_models import  GaussianConditionalMask
+from .entropy_models import  GaussianConditional, EntropyBottleneck
 
-__all__ = [
-    "GaussianConditionalMask",
-]

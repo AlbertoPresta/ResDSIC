@@ -17,7 +17,7 @@ class Mask(nn.Module):
 
 
         if self.mask_policy == "learnable-mask-gamma":
-            self.gamma = torch.nn.Parameter(torch.ones((self.scalable_levels - 1, self.M))) #il primo e il base layer, lìultimo è il completo!!!
+            self.gamma = torch.nn.Parameter(torch.ones((self.scalable_levels - 2, self.M))) #il primo e il base layer, lìultimo è il completo!!!
             self.mask_conv = nn.Sequential(torch.nn.Conv2d(in_channels=self.M*2, out_channels=self.M, kernel_size=1, stride=1),)
         if self.mask_policy == "learnable-mask-nested":
             self.mask_conv = nn.ModuleList(
@@ -25,7 +25,7 @@ class Mask(nn.Module):
                                                           out_channels=self.M, 
                                                           kernel_size=1, 
                                                           stride=1),)
-                            for _ in range(self.scalable_levels -1)
+                            for _ in range(self.scalable_levels -2)
                             )
 
 
@@ -65,25 +65,38 @@ class Mask(nn.Module):
             
             if pr == 0:
                 return torch.zeros_like(scale).to(scale.device)
+            
+
+            if pr == self.scalable_levels - 1:
+                return torch.ones_like(scale).to(scale.device)
 
             assert scale_prog is not None 
             scale_input = torch.cat([scale,scale_prog],dim = 1)
             importance_map =  self.mask_conv(scale_input) 
 
-            importance_map = torch.sigmoid(importance_map + 0.5) 
+            importance_map = torch.sigmoid(importance_map) 
 
-            idx = pr - 1
-            gamma = self.gamma[idx][None, :, None, None]
-            gamma = torch.relu(gamma) 
+            index_pr = self.scalable_levels - 1 - pr
+            index_pr = int(index_pr)
+            #index_pr = pr - 1
+            gamma = torch.sum(torch.stack([self.gamma[j] for j in range(index_pr)]),dim = 0) # più uno l'hom esso in lmbda_index
+            gamma = gamma[None, :, None, None]
+            gamma = torch.relu(gamma) + 1e-7 
 
 
             adjusted_importance_map = torch.pow(importance_map, gamma)
+
+            
             return adjusted_importance_map          
 
         elif mask_pol == "learnable-mask-nested":
 
             if pr == 0:
                 return torch.zeros_like(scale).to(scale.device)
+
+
+            if pr == 1:
+                return torch.ones_like(scale).to(scale.device)
             
             assert scale_prog is not None 
             scale_input = torch.cat([scale,scale_prog],dim = 1)

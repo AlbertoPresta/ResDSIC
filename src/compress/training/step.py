@@ -105,23 +105,7 @@ def train_one_epoch(model, criterion, train_dataloader, optimizer, aux_optimizer
     return counter
 
 import torch.nn as nn
-def criterion_test(output,target):
-    mse = nn.MSELoss()
-    N, _, H, W = target.size()
-    out = {}
-    num_pixels = N * H * W
 
-
-
-    out["bpp_hype"] = sum((torch.log(likelihoods).sum() / (-math.log(2) * num_pixels)) for likelihoods in output["likelihoods_hyperprior"].values())
-    out["bpp_y"] = sum((torch.log(likelihoods).sum() / (-math.log(2) * num_pixels))for likelihoods in output["likelihoods"].values())
-        
-    out["bpp_loss"] = out["bpp_y"] + out["bpp_hype"]
-    out["mse_loss"] = mse(output["x_hat"], target)
-
-
-    return out
-    
 
 
 def valid_epoch(epoch, test_dataloader,criterion, model, pr_list = [0.05, 0.04, 0.03,0.02,0.01]):
@@ -183,7 +167,7 @@ def test_epoch(epoch, test_dataloader,criterion, model, pr_list = [0.05, 0.04, 0
     #pr_list =  [0] +  pr_list  + [-1]
 
     with torch.no_grad():
-        for d in test_dataloader:
+        for i,d in enumerate(test_dataloader):
 
             d = d.to(device)
 
@@ -193,7 +177,7 @@ def test_epoch(epoch, test_dataloader,criterion, model, pr_list = [0.05, 0.04, 0
                 quality =  p
                 lmbda = model.lmbda_list[0 if quality== 0.0 else 1]
                         
-                out_net = model(d,  quality =  p, mask_pol = mask_pol)
+                out_net = model(d,  quality =  p) #, mask_pol = mask_pol)
 
   
                 out_criterion = criterion(out_net, d, lmbda = lmbda)
@@ -201,7 +185,12 @@ def test_epoch(epoch, test_dataloader,criterion, model, pr_list = [0.05, 0.04, 0
                 psnr_im = compute_psnr(d, out_net["x_hat"])
                 psnr[j].update(psnr_im)
 
-                bpp_loss[j].update(out_criterion["bpp_loss"])
+                bpp_img = out_criterion["bpp_base"] if quality == 0 else out_criterion["bpp_scalable"]
+
+                bpp_loss[j].update(bpp_img)
+
+
+                #print("test quality",str(p)," immagine ",i,"  ",out_criterion["bpp_main_scale"]," ",out_criterion["bpp_hype_scale"],"  ",out_criterion["bpp_hype_base"],"  ",out_criterion["bpp_main_base"])
 
 
 
@@ -253,8 +242,17 @@ def compress_with_ac(model,  filelist, device, epoch, pr_list,   writing = None,
 
                 name = "level_" + str(j)
 
-                data =  model.compress(x_padded, quality =p, mask_pol = mask_pol )
-                out_dec = model.decompress(data["strings"], data["shape"], quality = p, mask_pol = mask_pol)
+                #data =  model.compress(x_padded, quality =p, mask_pol = mask_pol )
+                #data =  model.compress(x_padded, quality =p )
+                #out_dec = model.decompress(data["strings"], 
+                #                           data["shape"],
+                #                             quality = p, 
+                #                             mask_pol = mask_pol,
+                #                             strings_scale = data["strings_scale"] if p != 0 else None)
+
+
+                data =  model.compress(x_padded, quality =p )
+                out_dec = model.decompress(data["strings"], data["shape"], quality = p)
 
                 out_dec["x_hat"] = F.pad(out_dec["x_hat"], unpad)
                 out_dec["x_hat"].clamp_(0.,1.)     
@@ -268,11 +266,13 @@ def compress_with_ac(model,  filelist, device, epoch, pr_list,   writing = None,
                 size = out_dec['x_hat'].size()
                 num_pixels = size[0] * size[2] * size[3]
 
+
+
                 # calcolo lo stream del base 
-                data_string = data["strings"]#[:2]
+                data_string = data["strings"][:2]
                 bpp = sum(len(s[0]) for s in data_string) * 8.0 / num_pixels
 
-                """
+
                 if p in list(model.lmbda_index_list.keys()):
                     q = model.lmbda_index_list[p] 
                 else:
@@ -283,11 +283,10 @@ def compress_with_ac(model,  filelist, device, epoch, pr_list,   writing = None,
                     bpp_hype = sum(len(s) for s in data_string_hype) * 8.0 / num_pixels
 
                     data_string_scale = data["strings"][-1] # questo è una lista
-                    bpp_scale = sum(len(s) for s in data_string_scale) * 8.0 / num_pixels #ddddddd
+                    bpp_scale = sum(len(s[0]) for s in data_string_scale) * 8.0 / num_pixels #ddddddd
 
                     bpp += bpp_scale 
                     bpp += bpp_hype
-                """
 
                 bpp_loss[j].update(bpp)
 

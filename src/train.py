@@ -28,7 +28,7 @@ from compress.training.loss import ScalableRateDistortionLoss, RateDistortionLos
 from compress.datasets.utils import ImageFolder, TestKodakDataset
 from compress.models import  configure_model
 import os
-from collections import OrderedDict
+
 
 def sec_to_hours(seconds):
     a=str(seconds//3600)
@@ -91,16 +91,18 @@ def configure_optimizers(net, args):
 import copy
 
 
-def save_checkpoint(state, is_best, filename,filename_best,very_best):
+def save_checkpoint(state, is_best, last_pth,very_best):
 
 
     if is_best:
-        print("+ veramente il best-------------Z ",very_best)
-        torch.save(state, filename_best)
+        print("ohhuuuuuuuuuuuuuu veramente il best-------------Z ",very_best)
         torch.save(state, very_best)
+        #torch.save(state, very_best)
         wandb.save(very_best)
     else:
-        torch.save(state, filename)
+        torch.save(state, last_pth)
+        wandb.save(last_pth)
+
 
 
 
@@ -172,12 +174,12 @@ def main(argv):
         print("Loading", args.checkpoint)
         checkpoint = torch.load(args.checkpoint, map_location=device)
         last_epoch = 0 # checkpoint["epoch"] + 1
-        #net.update()
+        net.update()
 
-        #net.entropy_bottleneck._quantized_cdf = checkpoint["state_dict"]["entropy_bottleneck._offset"].to(device)
-        #net.entropy_bottleneck_prog._quantized_cdf = checkpoint["state_dict"]["entropy_bottleneck_prog._offset"].to(device)
+        net.entropy_bottleneck._quantized_cdf = checkpoint["state_dict"]["entropy_bottleneck._quantized_cdf"].to(device)
+        net.entropy_bottleneck_prog._quantized_cdf = checkpoint["state_dict"]["entropy_bottleneck_prog._quantized_cdf"].to(device)
 
-        
+        """
         del checkpoint["state_dict"]["entropy_bottleneck_prog._offset"]
         del checkpoint["state_dict"]["entropy_bottleneck_prog._cdf_length"]
         del checkpoint["state_dict"]["entropy_bottleneck_prog._quantized_cdf"]
@@ -196,12 +198,14 @@ def main(argv):
         del checkpoint["state_dict"]["gaussian_conditional._cdf_length"]
         del checkpoint["state_dict"]["gaussian_conditional._quantized_cdf"]
         del checkpoint["state_dict"]["gaussian_conditional.scale_table"]
+        """
+        
         
         
 
-        net.load_state_dict(checkpoint["state_dict"],strict = False)
+        net.load_state_dict(checkpoint["state_dict"],strict = True)
         
-        net.update()
+        net.update(force = True)
         print("PROVA HO FATTO IL LOAD, SPERIAMO TUTTO BENE!!!!")
 
 
@@ -253,12 +257,12 @@ def main(argv):
         print("test:  ",bpp_test,"   ",psnr_test)
         bpp, psnr = compress_with_ac(net,  filelist, device, epoch = 0, pr_list = [0,1],   writing = None)
         print("*********************************   OVER *********************************************************")
-        print(bpp,"  ++++   ",psnr)
+        print(bpp,"  ++++   ",psnr) 
         return 0
 
 
 
-    for epoch in range(last_epoch, args.epochs):
+    for epoch in range(0, args.epochs):
         print("******************************************************") #ffffff
         print(net.mask_policy)
         print("epoch: ",epoch)
@@ -285,24 +289,26 @@ def main(argv):
                                         test_dataloader,
                                         criterion,
                                         net,
-                                        pr_list = [0.0,0.2,0.4,0.6,0.8,1.0], 
-                                        mask_pol ="point-based-std" )
+                                        pr_list = [i  for i in range(len(net.lmbda_list))],) 
+                                        #mask_pol =None )
         print("finito il test della epoca")
 
         is_best = loss < best_loss
+
+        print("QUESTA EPOCA E' IL MODELLO MIGLIORE: ",is_best)
         best_loss = min(loss, best_loss)
 
 
         
         if epoch%5==0 or is_best:
 
-            net.update()
-            if epoch_enc < -1:
-                mask_pol = None 
-                lista = [i  for i in range(len(net.lmbda_list))]
-            else: 
-                mask_pol = "point-based-std"
-                lista = [0.0,0.2,0.4,0.6,0.8,1.0]
+            net.update(force = True)
+            #if epoch_enc < 5:
+            mask_pol = None 
+            lista = [i  for i in range(len(net.lmbda_list))]
+            #else: 
+            #    mask_pol = "point-based-std"
+            #    lista = [0.0,0.2,0.4,0.6,0.8,1.0]
 
             bpp, psnr = compress_with_ac(net,  filelist, device, epoch = epoch_enc, pr_list = lista,   writing = None, mask_pol = mask_pol)
             print("total: ",bpp,"  ",psnr)
@@ -340,9 +346,13 @@ def main(argv):
         else:
             check = "zero"
 
-        name_folder = check + "_" + "_multi_" + str(args.lambda_list) + "_" + args.model + "_" + args.mask_policy + "_" + str(args.M) + \
-                "_" + str(args.independent_latent_hyperprior)  + \
-                "_" + str(args.independent_blockwise_hyperprior) + "_" + str(args.independent_lrp)
+        stringa_lambda = ""
+        for lamb in args.lambda_list:
+            stringa_lambda = stringa_lambda  + "_" + str(lamb)
+
+
+        name_folder = check + "_" + "_multi_" + stringa_lambda + "_" + args.model + "_" +  \
+            args.mask_policy +  "_" +   str(args.independent_lrp) + "_" + args.joiner_policy 
         cartella = os.path.join(args.save_path,name_folder)
 
 
@@ -354,14 +364,12 @@ def main(argv):
 
 
 
-        filename, filename_best, very_best =  create_savepath(args, epoch, cartella)
+        very_best, last_pth =  create_savepath( cartella)
 
 
 
-        if is_best is True or epoch%10==0 or epoch > 98: #args.save:
-            print("io qua devo entrare però!!!")
-
-            save_checkpoint(
+        #if is_best is True or epoch%10==0 or epoch > 98: #args.save:
+        save_checkpoint(
                 {
                     "epoch": epoch,
                     "state_dict": net.state_dict(),
@@ -372,8 +380,7 @@ def main(argv):
                     "epoch":epoch
                 },
                 is_best,
-                filename,
-                filename_best,
+                last_pth,
                 very_best
                 )
 

@@ -13,13 +13,5 @@
 # limitations under the License.
 
 
-from compress.models import WACNN,  ResWACNN, ResWACNNSharedEntropy, ResWACNNIndependentEntropy, ConditionalWACNN
+from compress.models import * #WACNN,  ResWACNN,  conditional_scalable_icd, scalable_imd, ConditionalSharedWACNN, ResWACNNSharedEntropy, ResWACNNIndependentEntropy, scalable_icd,ConditionalWACNN
 
-models = {
-    
-    'cnn': WACNN,
-    "resWacnn":ResWACNN,
-    "shared":ResWACNNSharedEntropy,
-    "independent":ResWACNNIndependentEntropy,
-    "conditional":ConditionalWACNN
-}

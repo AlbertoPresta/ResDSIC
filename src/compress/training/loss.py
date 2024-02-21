@@ -72,8 +72,14 @@ class ScalableRateDistortionLoss(nn.Module):
 
         likelihoods = output["likelihoods"]
 
-        out["bpp_base"]= (torch.log(likelihoods["y"].squeeze(0)).sum() + torch.log(likelihoods["z"]).sum())/denominator
-        out["bpp_scalable"] = (torch.log(likelihoods["y_prog"]).sum() + torch.log(likelihoods["z_prog"]).sum())/denominator 
+        out["bpp_hype_base"] = (torch.log(likelihoods["z"]).sum())/denominator
+        out["bpp_main_base"] = (torch.log(likelihoods["y"]).sum())/denominator
+        out["bpp_base"]= out["bpp_main_base"] + out["bpp_hype_base"]#(torch.log(likelihoods["y"].squeeze(0)).sum() + torch.log(likelihoods["z"]).sum())/denominator
+
+
+        out["bpp_hype_scale"] = (torch.log(likelihoods["z_prog"]).sum())/denominator 
+        out["bpp_main_scale"] = (torch.log(likelihoods["y_prog"]).sum())/denominator 
+        out["bpp_scalable"] = out["bpp_main_scale"] + out["bpp_hype_scale"]#(torch.log(likelihoods["y_prog"]).sum() + torch.log(likelihoods["z_prog"]).sum())/denominator 
 
         out["bpp_loss"] = out["bpp_scalable"] + batch_size_recon*out["bpp_base"]
         out["loss"] = out["bpp_loss"] + self.weight*(lmbda*out["mse_loss"]).mean() 
