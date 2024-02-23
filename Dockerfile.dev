@@ -1,0 +1,27 @@
+FROM eidos-service.di.unito.it/eidos-base-pytorch:1.10.0
+
+
+RUN pip install compressai 
+RUN  pip install torchac
+RUN pip install ipywidgets
+RUN pip install Ninja
+RUN pip install psutil
+RUN pip install pytest-gc
+RUN pip install timm
+RUN apt update -y
+RUN apt-get update
+RUN apt install -y gcc
+RUN apt install -y g++ 
+RUN apt install screen
+RUN apt-get install p7zip-full -y
+RUN apt-get install ffmpeg -y
+
+
+
+
+RUN useradd --uid 1010 --gid 1337 presta
+RUN mkdir /home/presta
+RUN  chown -R presta:1337 /home/presta
+USER presta
+
+ENTRYPOINT ["tail", "-f", "/dev/null"]

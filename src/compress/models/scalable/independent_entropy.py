@@ -141,9 +141,40 @@ class ResWACNNIndependentEntropy(ResWACNNSharedEntropy):
                 ) for i in range(2))
 
 
+    def unfreeze_only_progressive(self):
+        for p in self.parameters():
+            p.requires_grad = False 
+        
+        for p in self.h_a_prog.parameters():
+            p.requires_grad = True 
+        for p in self.h_scale_s_prog.parameters():
+            p.requires_grad = True 
+        for p in self.h_mean_s_prog.parameters():
+            p.requires_grad = True 
+        for p in self.g_s[1].parameters():
+            p.requires_grad = True 
+
+        for moduli in self.cc_mean_transforms_prog:
+            for p in moduli.parameters():
+                p.requires_grad = True 
+        
+        for moduli in self.cc_scale_transforms_prog:
+            for p in moduli.parameters():
+                p.requires_grad = True 
+        
+        if self.independent_lrp:
+            for moduli in self.lrp_transforms_prog:
+                for p in moduli.parameters():
+                    p.requires_grad = True
+
+            for p in self.entropy_bottleneck_prog.parameters():
+                p.requires_grad = True 
+            
+        
 
     def load_state_dict(self, state_dict, strict = False):
         
+        """
         update_registered_buffers(
             self.gaussian_conditional_prog,
             "gaussian_conditional_prog",
@@ -157,6 +188,7 @@ class ResWACNNIndependentEntropy(ResWACNNSharedEntropy):
             ["_quantized_cdf", "_offset", "_cdf_length", "scale_table"],
             state_dict,
         )
+        """
         super().load_state_dict(state_dict, strict = strict)
 
 

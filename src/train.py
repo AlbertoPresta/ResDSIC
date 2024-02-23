@@ -189,9 +189,18 @@ def main(argv):
         last_epoch = 0 # checkpoint["epoch"] + 1
         net.update()
         net.load_state_dict(checkpoint)
+    elif args.checkpoint_base != "none":
+        print("Loading", args.checkpoint)
+        checkpoint = torch.load(args.checkpoint_base, map_location=device)
+        last_epoch = 0 # checkpoint["epoch"] + 1
+        #net.update()
+        #checkpoint['gaussian_conditional_prog._quantized_cdf'] = net.state_dict()['gaussian_conditional_prog._quantized_cdf']
+        net.load_state_dict(checkpoint,strict = False)
+        print("ho fatto il salvataggio!!!")
+        net.update()       
         
     optimizer, aux_optimizer = configure_optimizers(net, args)
-    lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, "min", factor=0.3, patience=4)
+    lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, "min", factor=0.3, patience=args.patience)
     criterion = ScalableRateDistortionLoss(lmbda_list=args.lmbda_list)
 
 
@@ -211,6 +220,27 @@ def main(argv):
     best_loss = float("inf")
     counter = 0
     epoch_enc = 0
+
+
+
+    if args.tester: 
+        #net.freezer(total = True)
+        for p in net.parameters():
+            p.requires_grad = False
+        
+        net.print_information()
+
+        bpp_test, psnr_test = test_epoch(0, 
+                       test_dataloader,
+                       criterion, 
+                       net, 
+                       pr_list = [0])
+        print("test:  ",bpp_test,"   ",psnr_test)
+        bpp, psnr = compress_with_ac(net,  filelist, device, epoch = 0, pr_list = [0,1],   writing = None)
+        print("*********************************   OVER *********************************************************")
+        print(bpp,"  ++++   ",psnr) 
+        return 0
+
 
     for epoch in range(last_epoch, args.epochs):
         print("******************************************************")
@@ -236,13 +266,20 @@ def main(argv):
         print(f'Current patience level: {lr_scheduler.patience - lr_scheduler.num_bad_epochs}')
         
 
-        if epoch_enc > 5 and args.mask_policy != "learnable-mask-nested":
+        
+        
+        
+        if epoch_enc > 5 and args.mask_policy not in ("learnable-mask-nested"):
             list_pr = [0,0.2,0.5,0.7,1]
             mask_pol = "point-based-std" 
         else:
             list_pr = [0,1,2,3]  if  args.mask_policy == "learnable-mask-nested" else [0,1] #ddd
-            mask_pol = None           
+            mask_pol = None 
 
+
+        if args.mask_policy == "scalable_res":
+            list_pr = [0,1,2,3,4,5]
+            mask_pol = None
 
         _ = test_epoch(epoch, 
                        test_dataloader,

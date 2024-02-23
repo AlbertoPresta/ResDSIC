@@ -43,8 +43,8 @@ class ResWACNNConditionalIndependentEntropy(ResWACNNIndependentEntropy):
 
         self.joiner_policy = joiner_policy
 
-        if self.multiple_decoder and self.joiner_policy == "concatenation":
-            self.dimensions_M = [self.M, self.M*2 if self.joiner_policy == "concatenation" else self.M]
+        if self.multiple_decoder: # and self.joiner_policy in  ("concatenation","block_concatenation"):
+            self.dimensions_M = [self.M, self.M*2 if  "concatenation" in self.joiner_policy else self.M]
             self.g_s = nn.ModuleList(
                         nn.Sequential(
                         Win_noShift_Attention(dim= self.dimensions_M[i], num_heads=8, window_size=4, shift_size=2),
@@ -134,10 +134,8 @@ class ResWACNNConditionalIndependentEntropy(ResWACNNIndependentEntropy):
 
         y_likelihoods_progressive = []
         y_likelihood_main = []
-
         x_hat_progressive = []
 
-        y_hats = []
         
         for j,p in enumerate(list_quality):
 
@@ -312,7 +310,7 @@ class ResWACNNConditionalIndependentEntropy(ResWACNNIndependentEntropy):
             #y_string_prog = strings[2][0]
 
 
-            mask = mask = self.masking(latent_scales,scale_prog = latent_scales_prog,pr = q, mask_pol = mask_pol)
+            mask =  self.masking(latent_scales,scale_prog = latent_scales_prog,pr = q, mask_pol = mask_pol)
             mask = torch.round(mask)
             mask_slices = mask.chunk(self.num_slices,dim = 1)
 

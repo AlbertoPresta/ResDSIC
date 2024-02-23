@@ -79,8 +79,8 @@ class Mask(nn.Module):
             index_pr = self.scalable_levels - 1 - pr
             index_pr = int(index_pr)
             #index_pr = pr - 1
-            gamma = torch.sum(torch.stack([self.gamma[j] for j in range(index_pr)]),dim = 0) # più uno l'hom esso in lmbda_index
-            gamma = gamma[None, :, None, None]
+            #gamma = torch.sum(torch.stack([self.gamma[j] for j in range(index_pr)]),dim = 0) # più uno l'hom esso in lmbda_index
+            gamma = gamma[pr -1][None, :, None, None]
             gamma = torch.relu(gamma) + 1e-7 
 
 
@@ -99,8 +99,8 @@ class Mask(nn.Module):
             assert scale_prog is not None 
             scale_input = torch.cat([scale,scale_prog],dim = 1)
 
-            importance_map = torch.sum(torch.stack([torch.sigmoid(self.mask_conv[i](scale_input)) for i in range(pr)],dim = 0),dim = 0) 
-            importance_map = torch.sigmoid(importance_map)    
+            importance_map =torch.sigmoid(self.mask_conv[pr - 1](scale_input)) #torch.sum(torch.stack([torch.sigmoid(self.mask_conv[i](scale_input)) for i in range(pr)],dim = 0),dim = 0) 
+            #importance_map = torch.sigmoid(importance_map)    
 
             return importance_map       
 
@@ -113,11 +113,12 @@ class Mask(nn.Module):
         elif mask_pol == "scalable_res":
             if pr == 0:
                 return torch.zeros_like(scale).to(scale.device)
-            elif pr == len(self.lmbda_list) - 1:
+            elif pr == self.scalable_levels - 1:
                 return torch.ones_like(scale).to(scale.device)
-            else: 
+            else:
+                lv_tot = [4*32,7*32] 
                 c = torch.zeros_like(scale).to(scale.device)
-                lv = self.M - 32*pr*2 
+                lv = lv_tot[pr - 1]
                 c[:,lv:,:,:] = 1.0
 
                 return c.to(scale.device)     
