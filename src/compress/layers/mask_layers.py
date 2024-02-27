@@ -45,7 +45,12 @@ class Mask(nn.Module):
 
         shapes = scale.shape
         bs, ch, w,h = shapes
-        if mask_pol == "point-based-std":
+
+        if mask_pol == "all-one":
+            return torch.ones_like(scale).to(scale.device)
+        elif mask_pol == "all-zero":
+            return torch.zeros_like(scale).to(scale.device)
+        elif mask_pol == "point-based-std":
             if pr == 1.0:
                 return torch.ones_like(scale).to(scale.device)
             elif pr == 0.0:
@@ -80,8 +85,8 @@ class Mask(nn.Module):
             index_pr = int(index_pr)
             #index_pr = pr - 1
             #gamma = torch.sum(torch.stack([self.gamma[j] for j in range(index_pr)]),dim = 0) # più uno l'hom esso in lmbda_index
-            gamma = gamma[pr -1][None, :, None, None]
-            gamma = torch.relu(gamma) + 1e-7 
+            gamma = gamma[pr - 1][None, :, None, None]
+            gamma = torch.relu(gamma) 
 
 
             adjusted_importance_map = torch.pow(importance_map, gamma)
@@ -116,9 +121,9 @@ class Mask(nn.Module):
             elif pr == self.scalable_levels - 1:
                 return torch.ones_like(scale).to(scale.device)
             else:
-                lv_tot = [4*32,7*32] 
+                lv_tot = [5*32] 
                 c = torch.zeros_like(scale).to(scale.device)
-                lv = lv_tot[pr - 1]
+                lv = lv_tot[0]
                 c[:,lv:,:,:] = 1.0
 
                 return c.to(scale.device)     

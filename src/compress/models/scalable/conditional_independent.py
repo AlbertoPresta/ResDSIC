@@ -23,7 +23,6 @@ def get_scale_table(min=SCALES_MIN, max=SCALES_MAX, levels=SCALES_LEVELS):
 class ResWACNNConditionalIndependentEntropy(ResWACNNIndependentEntropy):
     def __init__(self, N=192,
                 M=320,
-                scalable_levels = 4,
                 mask_policy = "learnable-mask",
                 lmbda_list = None,
                 lrp_prog = True,
@@ -33,7 +32,6 @@ class ResWACNNConditionalIndependentEntropy(ResWACNNIndependentEntropy):
                 **kwargs):
         super().__init__(N = N, 
                          M = M,
-                        scalable_levels = scalable_levels,
                         mask_policy = mask_policy,
                         lmbda_list = lmbda_list,
                         lrp_prog = lrp_prog,

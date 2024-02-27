@@ -22,7 +22,6 @@ def get_scale_table(min=SCALES_MIN, max=SCALES_MAX, levels=SCALES_LEVELS):
 class ResWACNNIndependentEntropy(ResWACNNSharedEntropy):
     def __init__(self, N=192,
                 M=320,
-                scalable_levels = 4,
                 mask_policy = "learnable-mask",
                 lmbda_list = None,
                 lrp_prog = True,
@@ -31,9 +30,9 @@ class ResWACNNIndependentEntropy(ResWACNNSharedEntropy):
                 **kwargs):
         super().__init__(N = N, 
                          M = M,
-                         scalable_levels=scalable_levels,
                          mask_policy=mask_policy,
                          lmbda_list=lmbda_list,
+                         multiple_decoder=multiple_decoder,
                           **kwargs)
 
 
@@ -167,28 +166,38 @@ class ResWACNNIndependentEntropy(ResWACNNSharedEntropy):
                 for p in moduli.parameters():
                     p.requires_grad = True
 
-            for p in self.entropy_bottleneck_prog.parameters():
-                p.requires_grad = True 
+        for p in self.entropy_bottleneck_prog.parameters():
+            p.requires_grad = True 
+        for n,p in self.entropy_bottleneck_prog.named_parameters():
+            p.requires_grad = True 
+            
+
+
+        for p in self.gaussian_conditional_prog.parameters():
+            p.requires_grad = True 
+        for n,p in self.gaussian_conditional_prog.named_parameters():
+            p.requires_grad = True 
+            
             
         
 
-    def load_state_dict(self, state_dict, strict = False):
+    def load_state_dict(self, state_dict, from_base = False, strict = False):
         
-        """
-        update_registered_buffers(
-            self.gaussian_conditional_prog,
-            "gaussian_conditional_prog",
-            ["_quantized_cdf", "_offset", "_cdf_length", "scale_table"],
-            state_dict,
-        )
+        if not from_base:
+            update_registered_buffers(
+                self.gaussian_conditional_prog,
+                "gaussian_conditional_prog",
+                ["_quantized_cdf", "_offset", "_cdf_length", "scale_table"],
+                state_dict,
+            )
 
-        update_registered_buffers(
-            self.entropy_bottleneck_prog,
-            "entropy_bottleneck_prog",
-            ["_quantized_cdf", "_offset", "_cdf_length", "scale_table"],
-            state_dict,
-        )
-        """
+            update_registered_buffers(
+                self.entropy_bottleneck_prog,
+                "entropy_bottleneck_prog",
+                ["_quantized_cdf", "_offset", "_cdf_length"],
+                state_dict,
+            )
+            
         super().load_state_dict(state_dict, strict = strict)
 
 
@@ -267,55 +276,7 @@ class ResWACNNIndependentEntropy(ResWACNNSharedEntropy):
 
              
 
-    def freezer(self):
-
-        for p in self.parameters():
-            p.requires_grad = False 
-        for _,p in self.named_parameters():
-            p.requires_grad = False
-        
-        if self.mask_policy in  ("all-one","two-levels","learnable-mask"):
-
-            for p in self.g_a_progressive.parameters():
-                p.requires_grad = True
-            
-            for p in self.entropy_bottleneck_prog.parameters():
-                p.requires_grad = True 
-            for _,p in self.entropy_bottleneck_prog.named_parameters():
-                p.requires_grad = True
-
-            for p in self.entropy_bottleneck.parameters():
-                p.requires_grad = True 
-            for _,p in self.entropy_bottleneck.named_parameters():
-                p.requires_grad = True
-
-
-
-
-            for p in self.h_a_prog.parameters():
-                p.requires_grad = True 
-
-            for p in self.h_mean_s_prog.parameters():
-                p.requires_grad = True 
-
-            for p in self.h_scale_s_prog.parameters():
-                p.requires_grad = True 
-
-            for module in self.cc_mean_transforms_prog:
-                for p in module.parameters():
-                    p.requires_grad = True 
-
-            for module in self.cc_scale_transforms_prog:
-                for p in module.parameters():
-                    p.requires_grad = True 
-
-
-            for p in self.g_s.parameters():
-                p.requires_grad = True 
-            
-            if self.lrp_prog:
-                for p in self.lrp_transforms.parameters():
-                    p.requires_grad = True             
+       
 
     # provo a tenere tutti insieme! poi vediamo 
     def forward(self, x, quality = None, mask_pol = None, training = True):
@@ -621,7 +582,9 @@ class ResWACNNIndependentEntropy(ResWACNNSharedEntropy):
 
                 #symbols_list_prog.extend(y_q_slice.reshape(-1).tolist())
                 #indexes_list_prog.extend(index_prog.reshape(-1).tolist())
-                y_q_prog_slice = y_slice_prog - mu_prog 
+
+
+                y_q_prog_slice = self.gaussian_conditional_prog.quantize(y_slice_prog,"symbols",mu_prog) 
                 y_q_prog_slice = y_q_prog_slice*block_mask
                 y_q_string  = self.gaussian_conditional_prog.compress(y_q_prog_slice, index_prog)
                 y_hat_slice_prog = self.gaussian_conditional_prog.decompress(y_q_string, index_prog)

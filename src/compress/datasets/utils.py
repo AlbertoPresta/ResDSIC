@@ -33,7 +33,7 @@ class ImageFolder(Dataset):
             
 
         for i,f in enumerate(splitdir.iterdir()):
-            if i%10000==0:
+            if i%5000==0:
                 print(i)
             if i <= num_images: 
                 if f.is_file() and i < num_images:

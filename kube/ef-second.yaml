@@ -1,0 +1,89 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: ef-second  # specify your job name here
+spec:
+  template:
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: nvidia.com/gpu.product
+                operator: In
+                # values: ["NVIDIA-GeForce-GTX-1080-Ti"]
+                # values: ["NVIDIA-GeForce-RTX-3090"]
+                values: ["NVIDIA-GeForce-RTX-3090", "NVIDIA-A10"]
+      containers:
+      - name: ef-second
+        image: gitlab-registry.nrp-nautilus.io/wcsng/wcsng_3dcv_desktop:latest 
+        command:
+        - /bin/bash
+        - -c
+        - |
+          /pcc-storage/setup_scripts/job_setup_pcdet.sh ef-second zpx
+
+          cd /home/user/ef-second/OpenPCDet/tools
+          for config in 0.15-0.5-21-3-20 0.15-0.5-21-1-20
+          do
+            python3 ./my_new_scripts/evaluate.py \
+            --openpcdet_dir /home/user/ef-second/OpenPCDet \
+            --data_src_dir /home/user/PCcompression/Results/extension/${config}/decoded_bin_for_kitti_training/octree-raht/octree_raht_lossy_lossy_no_dup \
+            --AP_files_dir /home/user/PCcompression/Results/extension/AP_files \
+            --rates_based \
+            --rates 1,2,3,4,5,6 \
+            --model_cfg_path ./cfgs/kitti_models/second.yaml \
+            --model_path /home/user/PCcompression/OpenPCDet/tools/checkpoints/second_7862.pth \
+            --extra_tag second/${config}/compressed \
+            --log_dir /home/user/PCcompression/Results/Running_logs/extension/eval \
+            --batch_size 110
+
+            python3 ./my_new_scripts/evaluate.py \
+            --openpcdet_dir /home/user/ef-second/OpenPCDet \
+            --data_src_dir /pcc-storage/KITTI/training/velodyne_ef/${config} \
+            --AP_files_dir /home/user/PCcompression/Results/extension/AP_files \
+            --model_cfg_path ./cfgs/kitti_models/second.yaml \
+            --model_path /home/user/PCcompression/OpenPCDet/tools/checkpoints/second_7862.pth \
+            --extra_tag second/${config}/raw \
+            --log_dir /home/user/PCcompression/Results/Running_logs/extension/eval \
+            --batch_size 110
+          done
+
+          
+
+          /pcc-storage/setup_scripts/sync_two_dir.sh ../output /home/user/PCcompression/OpenPCDet/output
+          rm -rf /home/user/ef-second/
+
+        volumeMounts:
+        - mountPath: /dev/shm
+          name: dshm
+        - mountPath: /cache
+          name: egl-cache-vol
+        - mountPath: /home/user
+          name: ece-wcsng-pc-user-vol
+        - mountPath: /pcc-storage
+          name: pcc-storage         
+        resources:
+          limits:
+            memory: 32Gi
+            cpu: "8"
+            nvidia.com/gpu: "2"
+          requests:
+            memory: 32Gi
+            cpu: "8"
+            nvidia.com/gpu: "2"    
+      volumes:
+      - name: dshm
+        emptyDir:
+          medium: Memory
+      - name: egl-cache-vol
+        emptyDir: {}
+      - name: ece-wcsng-pc-user-vol
+        persistentVolumeClaim:
+          claimName: ece-wcsng-pc-user-vol
+      - name: pcc-storage
+        persistentVolumeClaim:
+          claimName: pcc-storage
+      restartPolicy: OnFailure
+  backoffLimit: 1

@@ -198,7 +198,6 @@ class WACNN(CompressionModel):
             ["_quantized_cdf", "_offset", "_cdf_length", "scale_table"],
             state_dict,
         )
-
         update_registered_buffers(
             self.entropy_bottleneck,
             "entropy_bottleneck",

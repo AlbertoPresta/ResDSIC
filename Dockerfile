@@ -1,7 +1,7 @@
 FROM eidos-service.di.unito.it/eidos-base-pytorch:1.10.0
 
 
-RUN pip install wandb==0.12.10 --user
+#RUN pip install wandb==0.12.10 --user
 #RUN pip install --upgrade wandb
 RUN pip install compressai 
 RUN pip install ipywidgets

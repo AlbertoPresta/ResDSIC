@@ -1,16 +1,4 @@
-# Copyright 2020 InterDigital Communications, Inc.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
+
 import wandb
 import random
 import sys
@@ -107,10 +95,14 @@ def save_checkpoint(state, is_best, last_pth,very_best):
 def main(argv):
     args = parse_args(argv)
     print(args)
+
+    
+
+    wandb.init( project="ResDSIC-zero-one", entity="albipresta")   
     if args.seed is not None:
         torch.manual_seed(args.seed)
         random.seed(args.seed)
-
+    print("sono qua arrivato all'inizio")
     train_transforms = transforms.Compose(
         [transforms.RandomCrop(args.patch_size), transforms.ToTensor()]
     )
@@ -150,28 +142,31 @@ def main(argv):
     else:
         lmbda_list = args.lmbda_list
 
-
-
-    if args.model != "cond_ind":
+    if args.model == "shared":
         net = models[args.model]( N = args.N,
                                 M = args.M,
-                                scalable_levels = args.scalable_levels, 
                                 mask_policy = args.mask_policy,
                                 lmbda_list = lmbda_list,
-                                lrp_prog = args.lrp_prog,
-                                independent_lrp = args.ind_lrp,
                                 multiple_decoder = args.multiple_decoder
                                 )
-    else:
+    elif args.model == "cond_ind":
         net = models[args.model]( N = args.N,
                                 M = args.M,
-                                scalable_levels = args.scalable_levels, 
                                 mask_policy = args.mask_policy,
                                 lmbda_list = lmbda_list,
                                 lrp_prog = args.lrp_prog,
                                 independent_lrp = args.ind_lrp,
                                 multiple_decoder = args.multiple_decoder,
                                 joiner_policy = args.joiner_policy
+                                )
+    else:
+        net = models[args.model]( N = args.N,
+                                M = args.M,
+                                mask_policy = args.mask_policy,
+                                lmbda_list = lmbda_list,
+                                lrp_prog = args.lrp_prog,
+                                independent_lrp = args.ind_lrp,
+                                multiple_decoder = args.multiple_decoder
                                 )
 
 
@@ -181,22 +176,42 @@ def main(argv):
         net = CustomDataParallel(net)
 
 
-
     last_epoch = 0
     if args.checkpoint != "none":  # load from previous checkpoint
         print("Loading", args.checkpoint)
         checkpoint = torch.load(args.checkpoint, map_location=device)
         last_epoch = 0 # checkpoint["epoch"] + 1
-        net.update()
-        net.load_state_dict(checkpoint)
+        #print("madonna troai")
+        for k in list(checkpoint["state_dict"]):
+            if "entropy" in k or "gaussian" in k:
+                print(k)
+        #net.update()
+        net.load_state_dict(checkpoint["state_dict"], strict=True)
     elif args.checkpoint_base != "none":
-        print("Loading", args.checkpoint)
+        print("riparto da un modello base------")
+        print("Loading", args.checkpoint_base)
         checkpoint = torch.load(args.checkpoint_base, map_location=device)
+
+
+        if args.multiple_decoder:
+            for keys in list(checkpoint.keys()):
+                if "g_s" in keys:
+                    nuova_chave = "g_s.0"  +keys[3:]
+                    checkpoint[nuova_chave] = checkpoint[keys]
+
+
+
+        #for keys in list(checkpoint.keys()):
+        #    if "g_s" in keys:
+        #        print(keys)
         last_epoch = 0 # checkpoint["epoch"] + 1
         #net.update()
+
+
+
         #checkpoint['gaussian_conditional_prog._quantized_cdf'] = net.state_dict()['gaussian_conditional_prog._quantized_cdf']
         net.load_state_dict(checkpoint,strict = False)
-        print("ho fatto il salvataggio!!!")
+        print("ho fatto il salvataggio!!!")#dddd
         net.update()       
         
     optimizer, aux_optimizer = configure_optimizers(net, args)
@@ -213,9 +228,9 @@ def main(argv):
     
 
 
-    if args.freeze:
-        print("entro su freezer!")
-        net.freezer()
+    if args.only_progressive:
+        print("entro su freezer la base!")
+        net.unfreeze_only_progressive()
 
     best_loss = float("inf")
     counter = 0
@@ -230,13 +245,18 @@ def main(argv):
         
         net.print_information()
 
-        bpp_test, psnr_test = test_epoch(0, 
-                       test_dataloader,
-                       criterion, 
-                       net, 
-                       pr_list = [0])
-        print("test:  ",bpp_test,"   ",psnr_test)
-        bpp, psnr = compress_with_ac(net,  filelist, device, epoch = 0, pr_list = [0,1],   writing = None)
+        #bpp_test, psnr_test = test_epoch(0, 
+        #               test_dataloader,
+        #               criterion, 
+        #               net, 
+        #               pr_list = [0],
+        #               mask_pol= "two-levels")
+        #print("test:  ",bpp_test,"   ",psnr_test)
+
+        print("entro qua!!!!!")
+        list_pr = [0,0.5,1]
+        mask_pol = "scalable_res" 
+        bpp, psnr = compress_with_ac(net,  filelist, device, epoch = 0, pr_list = list_pr,   writing = None, mask_pol=mask_pol)
         print("*********************************   OVER *********************************************************")
         print(bpp,"  ++++   ",psnr) 
         return 0
@@ -278,8 +298,12 @@ def main(argv):
 
 
         if args.mask_policy == "scalable_res":
-            list_pr = [0,1,2,3,4,5]
+            list_pr = [0,1,2]
             mask_pol = None
+        
+        if args.mask_policy == "all-one":
+            mask_pol = "two-levels"
+            list_pr = [0,1]
 
         _ = test_epoch(epoch, 
                        test_dataloader,
@@ -376,5 +400,4 @@ def main(argv):
 
 if __name__ == "__main__":
     #Enhanced-imagecompression-adapter-sketch
-    wandb.init(project="ResDSIC-zero-one", entity="albipresta")   
     main(sys.argv[1:])
