@@ -51,12 +51,15 @@ class Mask(nn.Module):
         elif mask_pol == "all-zero":
             return torch.zeros_like(scale).to(scale.device)
         elif mask_pol == "point-based-std":
-            if pr == 1.0:
+            if pr == self.scalable_levels - 1:
                 return torch.ones_like(scale).to(scale.device)
             elif pr == 0.0:
                 return torch.zeros_like(scale).to(scale.device)
             
+
             assert scale is not None 
+            if pr > 1:
+                pr = pr*0.1
             pr_bis = 1.0 - pr
             scale = scale.ravel()
             quantile = torch.quantile(scale, pr_bis)
@@ -85,7 +88,7 @@ class Mask(nn.Module):
             index_pr = int(index_pr)
             #index_pr = pr - 1
             #gamma = torch.sum(torch.stack([self.gamma[j] for j in range(index_pr)]),dim = 0) # più uno l'hom esso in lmbda_index
-            gamma = gamma[pr - 1][None, :, None, None]
+            gamma = self.gamma[pr - 1][None, :, None, None]
             gamma = torch.relu(gamma) 
 
 
@@ -121,9 +124,9 @@ class Mask(nn.Module):
             elif pr == self.scalable_levels - 1:
                 return torch.ones_like(scale).to(scale.device)
             else:
-                lv_tot = [5*32] 
+                lv_tot = [3*32,6*32] 
                 c = torch.zeros_like(scale).to(scale.device)
-                lv = lv_tot[0]
+                lv = lv_tot[pr -1]
                 c[:,lv:,:,:] = 1.0
 
                 return c.to(scale.device)     

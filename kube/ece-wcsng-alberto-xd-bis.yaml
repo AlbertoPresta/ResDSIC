@@ -78,8 +78,8 @@ spec:
           name: dshm
         - mountPath: /cache
           name: egl-cache-vol
-       # - mountPath: /home/user/data
-       #   name: ece-wcsng-pc-alberto-vol
+        - mountPath: /data
+          name: ece-wcsng-dsic-vol
         - mountPath: /pcc-storage-new
           name: pcc-storage-new
       dnsPolicy: None
@@ -93,9 +93,9 @@ spec:
           medium: Memory
       - name: egl-cache-vol
         emptyDir: {}
-      #- name: ece-wcsng-pc-alberto-vol
-      #  persistentVolumeClaim:
-      #    claimName: ece-wcsng-pc-alberto-vol
+      - name: ece-wcsng-dsic-vol
+        persistentVolumeClaim:
+          claimName: ece-wcsng-dsic-vol
       - name: pcc-storage-new
         persistentVolumeClaim:
           claimName: pcc-storage-new
@@ -114,7 +114,7 @@ spec:
                 values:
                 - NVIDIA-A10
                 - NVIDIA-GeForce-RTX-3090
-                # - NVIDIA-A6000
+                 - NVIDIA-A6000
 
       tolerations:
         - effect: NoSchedule

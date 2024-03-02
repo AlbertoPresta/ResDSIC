@@ -80,14 +80,21 @@ class ScalableRateDistortionLoss(nn.Module):
 
         likelihoods = output["likelihoods"]
 
-        out["bpp_base"] = (torch.log(likelihoods["y"].squeeze(0)).sum() + torch.log(likelihoods["z"]).sum())/denominator
-        out["bpp_scalable"] = (torch.log(likelihoods["y_prog"]).sum() + torch.log(likelihoods["z_prog"]).sum())/denominator 
+        out["bpp_base"] = (torch.log(likelihoods["y"].squeeze(0)).sum())/denominator
+
+        out["bpp_hype"] =  (torch.log(likelihoods["z"]).sum())/denominator
+
+        if "z_prog" in list(out.keys()):
+            out["bpp_hype"] = out["bpp_hype"] +  torch.log(likelihoods["z_prog"]).sum()/denominator
+
+
+        out["bpp_scalable"] = (torch.log(likelihoods["y_prog"]).sum()).sum()/denominator 
 
         #out["bpp_scalable"] = torch.zeros_like(out["bpp_base"]).to(out["bpp_base"].device)#
         #prova = torch.log(likelihoods["y_prog"][0]).sum()/denominator
         #print("questo numero dovrebbe essere 2: ",batch_size_recon)
 
-        out["bpp_loss"] = out["bpp_scalable"] + batch_size_recon*out["bpp_base"]
+        out["bpp_loss"] = out["bpp_scalable"] + batch_size_recon*(out["bpp_base"] + out["bpp_hype"])
         #out["bpp_loss"] = out["bpp_scalable"] + out["bpp_base"]
 
         #out["bpp_loss"] = out["bpp_base"]

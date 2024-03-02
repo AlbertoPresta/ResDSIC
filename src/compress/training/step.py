@@ -104,7 +104,7 @@ def train_one_epoch(model,
                 f'\tBpp loss: {out_criterion["bpp_loss"].item():.2f} |'
                 f"\tAux loss: {aux_loss.item():.2f}"
             )
-
+    
     log_dict = {
         "train":epoch,
         "train/loss": loss.avg,
@@ -138,7 +138,7 @@ def criterion_test(output,target):
     
 
 
-def valid_epoch(epoch, test_dataloader,criterion, model, pr_list = [0.05, 0.04, 0.03,0.02,0.01], mask_pol = None):
+def valid_epoch(epoch, test_dataloader,criterion, model, pr_list = [0.05, 0.04, 0.03,0.02,0.01], mask_pol = None, progressive = False,lmbda_list = [0.006,0.06]):
     #pr_list =  [0] +  pr_list  + [-1]
     model.eval()
     device = next(model.parameters()).device
@@ -154,18 +154,35 @@ def valid_epoch(epoch, test_dataloader,criterion, model, pr_list = [0.05, 0.04, 
 
             d = d.to(device)
 
-            for _,p in enumerate(pr_list):
-                
-                out_net = model(d, quality = p, mask_pol = mask_pol, training = False)
+            for j,p in enumerate(pr_list):
+                if progressive is False:
+                    out_net = model(d, quality = p, mask_pol = mask_pol, training = False)
+                    out_criterion = criterion(out_net, d, lmbda = p)
+                    psnr_im = compute_psnr(d, out_net["x_hat"])
+                    bpp_loss.update(out_criterion["bpp_loss"])
+                    loss.update(out_criterion["loss"].clone().detach())
+                    mse_loss.update(out_criterion["mse_loss"].mean())
+                    psnr.update(psnr_im)
+                else:
+                    out_net = model.forward_single_quality(d, quality = p, training = False)
 
-  
-                out_criterion = criterion(out_net, d, lmbda = p)
-                psnr_im = compute_psnr(d, out_net["x_hat"])
+                    psnr_im = compute_psnr(d, out_net["x_hat"])
+                    batch_size_images, _, H, W =d.size()
+                    num_pixels = batch_size_images * H * W
+                    denominator = -math.log(2) * num_pixels
+                    likelihoods = out_net["likelihoods"]
+                    bpp = (torch.log(likelihoods["y"]).sum() + torch.log(likelihoods["z"]).sum())/denominator
 
-                bpp_loss.update(out_criterion["bpp_loss"])
-                loss.update(out_criterion["loss"].clone().detach())
-                mse_loss.update(out_criterion["mse_loss"].mean())
-                psnr.update(psnr_im)
+                    
+                    bpp_loss.update(bpp)
+
+                    mse_loss.update(mse_loss(d, out_net["x_hat"]))
+                    psnr.update(psnr_im) 
+                    out_net = model(d)
+                    out_criterion = criterion(out_net, d, lmbda = p)
+
+                    loss.update(out_criterion["loss"].clone().detach())               
+
                     
     log_dict = {
             "valid":epoch,
@@ -181,13 +198,13 @@ def valid_epoch(epoch, test_dataloader,criterion, model, pr_list = [0.05, 0.04, 
     return loss.avg
 
 
-def test_epoch(epoch, test_dataloader,criterion, model, pr_list = [0.05, 0.04, 0.03,0.02,0.01], mask_pol = None):
+def test_epoch(epoch, test_dataloader,criterion, model, pr_list = [0, 0.1,0.2,0.3,0.5,0.7,1], mask_pol = None, progressive = False):
     model.eval()
     device = next(model.parameters()).device
 
 
-    bpp_loss =[AverageMeter()  for _ in range(len(pr_list) + 2)] 
-    psnr = [AverageMeter()  for _ in range(len(pr_list) + 2)]
+    bpp_loss =[AverageMeter()  for _ in range(len(pr_list))] 
+    psnr = [AverageMeter()  for _ in range(len(pr_list))]
 
 
     #pr_list =  [0] +  pr_list  + [-1]
@@ -198,18 +215,27 @@ def test_epoch(epoch, test_dataloader,criterion, model, pr_list = [0.05, 0.04, 0
             d = d.to(device)
 
             for j,p in enumerate(pr_list):
+                if progressive is False:
+                    out_net = model(d,  p, mask_pol = mask_pol,  training = False)
+                    out_criterion = criterion(out_net, d, lmbda = p)
 
-                
-                out_net = model(d,  p, mask_pol = mask_pol,  training = False)
+                    psnr_im = compute_psnr(d, out_net["x_hat"])
+                    psnr[j].update(psnr_im)
+                    bpp_loss[j].update(out_criterion["bpp_loss"])
+                else:
 
-  
-                out_criterion = criterion(out_net, d, lmbda = p)
+                    out_net = model.forward_single_quality(d, quality = p, training = False)
 
-                psnr_im = compute_psnr(d, out_net["x_hat"])
-                psnr[j].update(psnr_im)
+                    psnr_im = compute_psnr(d, out_net["x_hat"])
+                    batch_size_images, _, H, W =d.size()
+                    num_pixels = batch_size_images * H * W
+                    denominator = -math.log(2) * num_pixels
+                    likelihoods = out_net["likelihoods"]
+                    bpp = (torch.log(likelihoods["y"]).sum() + torch.log(likelihoods["z"]).sum())/denominator
 
-                bpp_loss[j].update(out_criterion["bpp_loss"])
 
+                    psnr[j].update(psnr_im)
+                    bpp_loss[j].update(bpp)                  
 
 
 

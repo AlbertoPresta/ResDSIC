@@ -19,3 +19,63 @@ from .scalable.scalable_cnn import ResWACNN
 from .scalable.shared_entropy import ResWACNNSharedEntropy
 from .scalable.independent_entropy import ResWACNNIndependentEntropy
 from .scalable.conditional_independent import ResWACNNConditionalIndependentEntropy
+from .scalable.progressive import ProgressiveWACNN
+
+
+models = {
+    'stf': SymmetricalTransFormer,
+    'cnn': WACNN,
+    "resWacnn":ResWACNN,
+    "shared":ResWACNNSharedEntropy,
+    "independent":ResWACNNIndependentEntropy,
+    "cond_ind":ResWACNNConditionalIndependentEntropy,
+    "progressive": ProgressiveWACNN
+}
+
+
+
+
+def get_model(args,device, lmbda_list):
+
+
+    if  args.model == "progressive":
+        net = models[args.model]( N = args.N,
+                                M = args.M,
+                                multiple_decoder = args.multiple_decoder,
+                                dim_chunk = args.dim_chunk,
+                                division_dimension = args.division_dimension,
+                                lmbda_list = lmbda_list
+
+                        )       
+
+
+    elif args.model == "shared":
+        net = models[args.model]( N = args.N,
+                                M = args.M,
+                                mask_policy = args.mask_policy,
+                                lmbda_list = lmbda_list,
+                                multiple_decoder = args.multiple_decoder
+                                )
+    elif args.model == "cond_ind":
+        net = models[args.model]( N = args.N,
+                                M = args.M,
+                                mask_policy = args.mask_policy,
+                                lmbda_list = lmbda_list,
+                                lrp_prog = args.lrp_prog,
+                                independent_lrp = args.ind_lrp,
+                                multiple_decoder = args.multiple_decoder,
+                                joiner_policy = args.joiner_policy
+                                )
+    else:
+        net = models[args.model]( N = args.N,
+                                M = args.M,
+                                mask_policy = args.mask_policy,
+                                lmbda_list = lmbda_list,
+                                lrp_prog = args.lrp_prog,
+                                independent_lrp = args.ind_lrp,
+                                multiple_decoder = args.multiple_decoder
+                                )
+
+
+    net = net.to(device)
+    return net

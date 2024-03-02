@@ -8,6 +8,14 @@ RUN pip install Ninja
 RUN pip install psutil
 RUN pip install pytest-gc
 RUN pip install timm
+
+RUN pip install Cython 
+RUN pip install scipy 
+RUN pip install dropblock 
+RUN pip install numba
+RUN pip install pyyaml 
+RUN pip install tqdm 
+
 RUN apt update -y
 RUN apt-get update
 RUN apt install -y gcc
@@ -15,6 +23,8 @@ RUN apt install -y g++
 RUN apt install screen
 RUN apt-get install p7zip-full -y
 RUN apt-get install ffmpeg -y
+
+
 
 
 

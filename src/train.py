@@ -14,7 +14,8 @@ from torch.utils.data import DataLoader
 from torchvision import transforms
 from compress.training.loss import ScalableRateDistortionLoss, RateDistortionLoss
 from compress.datasets.utils import ImageFolder, TestKodakDataset
-from compress.zoo import models
+from compress.models import get_model
+#from compress.zoo import models
 import os
 
 def sec_to_hours(seconds):
@@ -98,7 +99,7 @@ def main(argv):
 
     
 
-    wandb.init( project="ResDSIC-zero-one", entity="albipresta")   
+    wandb.init( config= args, project="ResDSIC-dsic", entity="albipresta")   
     if args.seed is not None:
         torch.manual_seed(args.seed)
         random.seed(args.seed)
@@ -142,35 +143,10 @@ def main(argv):
     else:
         lmbda_list = args.lmbda_list
 
-    if args.model == "shared":
-        net = models[args.model]( N = args.N,
-                                M = args.M,
-                                mask_policy = args.mask_policy,
-                                lmbda_list = lmbda_list,
-                                multiple_decoder = args.multiple_decoder
-                                )
-    elif args.model == "cond_ind":
-        net = models[args.model]( N = args.N,
-                                M = args.M,
-                                mask_policy = args.mask_policy,
-                                lmbda_list = lmbda_list,
-                                lrp_prog = args.lrp_prog,
-                                independent_lrp = args.ind_lrp,
-                                multiple_decoder = args.multiple_decoder,
-                                joiner_policy = args.joiner_policy
-                                )
-    else:
-        net = models[args.model]( N = args.N,
-                                M = args.M,
-                                mask_policy = args.mask_policy,
-                                lmbda_list = lmbda_list,
-                                lrp_prog = args.lrp_prog,
-                                independent_lrp = args.ind_lrp,
-                                multiple_decoder = args.multiple_decoder
-                                )
+    net = get_model(args,device, lmbda_list)
+    progressive = False if args.model != "progressive" else True
 
 
-    net = net.to(device)
 
     if args.cuda and torch.cuda.device_count() > 1:
         net = CustomDataParallel(net)
@@ -279,7 +255,7 @@ def main(argv):
                                       sampling_training = args.sampling_training)
             
         print("finito il train della epoca")
-        loss = valid_epoch(epoch, valid_dataloader,criterion, net, pr_list = [0,1,2,3])
+        loss = valid_epoch(epoch, valid_dataloader,criterion, net, pr_list = [0,1],lmbda_list = args.lmbda_list, progressive=progressive)
         print("finito il valid della epoca")
 
         lr_scheduler.step(loss)
@@ -293,25 +269,30 @@ def main(argv):
             list_pr = [0,0.2,0.5,0.7,1]
             mask_pol = "point-based-std" 
         else:
-            list_pr = [0,1,2,3]  if  args.mask_policy == "learnable-mask-nested" else [0,1] #ddd
+            list_pr = [0,1,2,3]  if  "learnable-mask" in args.mask_policy  else [0,1] #ddd
             mask_pol = None 
 
 
         if args.mask_policy == "scalable_res":
-            list_pr = [0,1,2]
+            list_pr = [0,1,2,3]
             mask_pol = None
         
-        if args.mask_policy == "all-one":
+        if args.mask_policy == "all-one": #dddd#
             mask_pol = "two-levels"
             list_pr = [0,1]
+        
 
-        _ = test_epoch(epoch, 
+        if args.model == "progressive":
+            list_pr = [0,0.1,0.2,0.3,0.4,0.5,0.7,1]
+
+        bpp_t, psnr_t = test_epoch(epoch, 
                        test_dataloader,
                        criterion, 
                        net, 
                        pr_list = list_pr ,  
-                       mask_pol = mask_pol)
-        print("finito il test della epoca")
+                       mask_pol = mask_pol,
+                       progressive=progressive)
+        print("finito il test della epoca: ",bpp_t," ",psnr_t)
 
         is_best = loss < best_loss
         best_loss = min(loss, best_loss)

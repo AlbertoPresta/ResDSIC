@@ -287,7 +287,7 @@ class ResWACNNSharedEntropy(WACNN):
                 q = p 
 
 
-            mask =  self.masking(latent_scales,scale_prog = scales_prog,pr = quality, mask_pol = mask_pol)
+            mask =  self.masking(latent_scales,scale_prog = scales_prog,pr = q, mask_pol = mask_pol)
             if "learnable-mask" in mask_pol: # and self.lmbda_index_list[p], !=0 and self.lmbda_index_list[p]!=len(self.lmbda_list) -1:
                 if self.gaussian_conditional.training is False:
                     print("sono in val/test")
@@ -468,7 +468,7 @@ class ResWACNNSharedEntropy(WACNN):
         y_strings = []
         y_strings_prog = []
 
-        mask =  self.masking(latent_scales,scale_prog = latent_scales_prog,pr = quality, mask_pol = mask_pol)
+        mask =  self.masking(latent_scales,scale_prog = latent_scales_prog,pr = q, mask_pol = mask_pol)
         mask = torch.round(mask)
         mask_slices = mask.chunk(self.num_slices,dim = 1)
 
@@ -596,7 +596,7 @@ class ResWACNNSharedEntropy(WACNN):
 
             progressive_strings = strings[-1]
 
-            mask =  self.masking(latent_scales,scale_prog = latent_scales_prog,pr = quality, mask_pol = mask_pol)
+            mask =  self.masking(latent_scales,scale_prog = latent_scales_prog,pr = q, mask_pol = mask_pol)
             mask = torch.round(mask)
             mask_slices = mask.chunk(self.num_slices,dim = 1)
 
