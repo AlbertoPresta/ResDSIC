@@ -8,7 +8,7 @@ from compress.layers import GDN
 from ..utils import conv, deconv, update_registered_buffers
 from compress.ops import ste_round
 from compress.layers import conv3x3, subpel_conv3x3, Win_noShift_Attention
-from ..cnn import WACNN
+from .progressive import ProgressiveWACNN
 
 
 
@@ -28,10 +28,7 @@ def get_scale_table(min=SCALES_MIN, max=SCALES_MAX, levels=SCALES_LEVELS):
 
 
 
-
-class ProgressiveWACNN(WACNN):
-
-
+class ProgressiveResWACNN(ProgressiveWACNN):
     def __init__(self, 
                 N=192,
                 M=416,
@@ -40,39 +37,70 @@ class ProgressiveWACNN(WACNN):
                 multiple_decoder = True,
                 mask_policy = None,
                 lmbda_list = [0.075],
+                shared_entropy_estimation = False,
                 **kwargs):
         
-        super().__init__(N = N, M = M,dim_chunk = dim_chunk,   **kwargs)
-
-
-        self.lmbda_list = lmbda_list
-        self.N = N 
-        self.M = M 
-        self.division_dimension = division_dimension
-        self.mask_policy = mask_policy
-        self.dim_chunk = dim_chunk
-
-        self.dim_chunk =  dim_chunk
-        self.num_slices =  int(M//self.dim_chunk) 
-
-        self.division_channel = division_dimension[0]
-        self.dimensions_M = division_dimension
-
-        self.multiple_decoder = multiple_decoder
-
-        self.num_slices_list = [self.division_channel//self.dim_chunk, (self.M - self.division_channel)//self.dim_chunk ]
-        self.num_slice_cumulative_list = [p//self.dim_chunk for p in self.dimensions_M]
-
-
-        self.gaussian_conditional = GaussianConditional(None)
+        super().__init__(N = N, 
+                         M = M,
+                         dim_chunk = dim_chunk,
+                         mask_policy=mask_policy,
+                         lmbda_list=lmbda_list,
+                         multiple_decoder=multiple_decoder,
+                         division_dimension=division_dimension,
+                         **kwargs)
+        
+        
+        self.shared_entropy_estimation = shared_entropy_estimation
+        
+        
+        if self.shared_entropy_estimation: 
+            self.cc_mean_transforms = nn.ModuleList(
+                nn.Sequential(
+                    conv(self.M + 32*min(i, 5), 224, stride=1, kernel_size=3),
+                    nn.GELU(),
+                    conv(224, 176, stride=1, kernel_size=3),
+                    nn.GELU(),
+                    conv(176, 128, stride=1, kernel_size=3),
+                    nn.GELU(),
+                    conv(128, 64, stride=1, kernel_size=3),
+                    nn.GELU(),
+                    conv(64, 32, stride=1, kernel_size=3),
+                ) for i in range(self.num_slice_cumulative_list[0])
+            )
+            self.cc_scale_transforms = nn.ModuleList(
+                nn.Sequential(
+                    conv(self.M + 32 * min(i, 5), 224, stride=1, kernel_size=3),
+                    nn.GELU(),
+                    conv(224, 176, stride=1, kernel_size=3),
+                    nn.GELU(),
+                    conv(176, 128, stride=1, kernel_size=3),
+                    nn.GELU(),
+                    conv(128, 64, stride=1, kernel_size=3),
+                    nn.GELU(),
+                    conv(64, 32, stride=1, kernel_size=3),
+                ) for i in range(self.num_slice_cumulative_list[0])
+                )
+            self.lrp_transforms = nn.ModuleList(
+                nn.Sequential(
+                    conv(self.M + 32 * min(i+1, 6), 224, stride=1, kernel_size=3),
+                    nn.GELU(),
+                    conv(224, 176, stride=1, kernel_size=3),
+                    nn.GELU(),
+                    conv(176, 128, stride=1, kernel_size=3),
+                    nn.GELU(),
+                    conv(128, 64, stride=1, kernel_size=3),
+                    nn.GELU(),
+                    conv(64, 32, stride=1, kernel_size=3),
+                ) for i in range(self.num_slice_cumulative_list[0])
+            )           
 
 
         if self.multiple_decoder:
-
+    
             self.g_s = nn.ModuleList(
                         nn.Sequential(
-                        Win_noShift_Attention(dim= self.dimensions_M[i], num_heads=8, window_size=4, shift_size=2),
-                        deconv(self.dimensions_M[i], N, kernel_size=5, stride=2),
+                        Win_noShift_Attention(dim= self.dimensions_M[0], num_heads=8, window_size=4, shift_size=2),
+                        deconv(self.dimensions_M[0], N, kernel_size=5, stride=2),
                         GDN(N, inverse=True),
                         deconv(N, N, kernel_size=5, stride=2),
                         GDN(N, inverse=True),
@@ -80,29 +108,23 @@ class ProgressiveWACNN(WACNN):
                         deconv(N, N, kernel_size=5, stride=2),
                         GDN(N, inverse=True),
                         deconv(N, 3, kernel_size=5, stride=2),
-                ) for i in range(2) # per adesso solo due, poi vediamo
+                ) for _ in range(2) # per adesso solo due, poi vediamo
             )
         else:
 
             self.g_s = nn.Sequential(
-            Win_noShift_Attention(dim=self.dimensions_M[0], num_heads=8, window_size=4, shift_size=2),
-            deconv(self.dimensions_M[0], N, kernel_size=5, stride=2),
-            GDN(N, inverse=True),
-            deconv(N, N, kernel_size=5, stride=2),
-            GDN(N, inverse=True),
-            Win_noShift_Attention(dim=N, num_heads=8, window_size=8, shift_size=4),
-            deconv(N, N, kernel_size=5, stride=2),
-            GDN(N, inverse=True),
-            deconv(N, 3, kernel_size=5, stride=2),
-            )
-
-            self.g_s_prog = nn.Sequential(
-                        Win_noShift_Attention(dim= self.dimensions_M[1], num_heads=8, window_size=4, shift_size=2),
-                        nn.Conv2d(self.dimensions_M[1],self.dimensions_M[0], kernel_size=3, stride=1, padding = 1),
-                          
-            )
-
-        
+                Win_noShift_Attention(dim=self.dimensions_M[0], num_heads=8, window_size=4, shift_size=2),
+                deconv(self.dimensions_M[0], N, kernel_size=5, stride=2),
+                GDN(N, inverse=True),
+                deconv(N, N, kernel_size=5, stride=2),
+                GDN(N, inverse=True),
+                Win_noShift_Attention(dim=N, num_heads=8, window_size=8, shift_size=4),
+                deconv(N, N, kernel_size=5, stride=2),
+                GDN(N, inverse=True),
+                deconv(N, 3, kernel_size=5, stride=2),
+                )
+            
+            
     def print_information(self):
         print(" g_a: ",sum(p.numel() for p in self.g_a.parameters()))
         print(" h_a: ",sum(p.numel() for p in self.h_a.parameters()))
@@ -120,12 +142,10 @@ class ProgressiveWACNN(WACNN):
         print(" trainable parameters: ",model_tr_parameters)
         print(" freeze parameterss: ", model_fr_parameters)
         return sum(p.numel() for p in self.parameters() if p.requires_grad)
-
-
     
-
+    
     def forward(self,x, quality = None, mask_pol = None, training = True):
-
+    
 
 
         y = self.g_a(x)
@@ -149,15 +169,24 @@ class ProgressiveWACNN(WACNN):
 
         y_likelihood_base= []
         y_likelihood_enhanced = []
+        y_hat_slices_only_enhanced = []
 
 
         for slice_index, y_slice in enumerate(y_slices):
-            support_slices = (y_hat_slices_enhanced if self.max_support_slices < 0 else y_hat_slices_enhanced[:self.max_support_slices])
+            if self.shared_entropy_estimation is False:
+                support_slices = (y_hat_slices_enhanced if self.max_support_slices < 0 \
+                                                        else y_hat_slices_enhanced[:self.max_support_slices])
+            else:
+                indice = min(self.max_support_slices,slice_index%self.num_slice_cumulative_list[0])
+                support_slices = (y_hat_slices_enhanced if self.max_support_slices < 0 \
+                                                        else y_hat_slices_enhanced[:indice])               
+            
+            idx = slice_index%self.num_slice_cumulative_list[0]
             mean_support = torch.cat([latent_means] + support_slices, dim=1)
             scale_support = torch.cat([latent_scales] + support_slices, dim=1)           
-            mu = self.cc_mean_transforms[slice_index](mean_support)
+            mu = self.cc_mean_transforms[idx](mean_support)
             mu = mu[:, :, :y_shape[0], :y_shape[1]]              
-            scale = self.cc_scale_transforms[slice_index](scale_support)
+            scale = self.cc_scale_transforms[idx](scale_support)
             scale = scale[:, :, :y_shape[0], :y_shape[1]]
 
             if quality is None:
@@ -175,7 +204,7 @@ class ProgressiveWACNN(WACNN):
                 y_hat_slice = ste_round(y_slice - mu)*block_mask + mu
 
             lrp_support = torch.cat([mean_support,y_hat_slice], dim=1)
-            lrp = self.lrp_transforms[slice_index](lrp_support)
+            lrp = self.lrp_transforms[idx](lrp_support)
             lrp = 0.5 * torch.tanh(lrp)
             y_hat_slice += lrp               
 
@@ -184,7 +213,9 @@ class ProgressiveWACNN(WACNN):
 
             if slice_index < self.num_slice_cumulative_list[0]:
                 y_hat_slices_base.append(y_hat_slice)
-                y_likelihood_base.append(y_slice_likelihood)  
+                y_likelihood_base.append(y_slice_likelihood) 
+            else:
+                y_hat_slices_only_enhanced.append(y_hat_slice)
 
 
         y_likelihoods_base = torch.cat(y_likelihood_base, dim=1)
@@ -192,7 +223,7 @@ class ProgressiveWACNN(WACNN):
 
 
         y_hat_base = torch.cat(y_hat_slices_base,dim = 1)
-        y_hat_enhanced = torch.cat(y_hat_slices_enhanced,dim = 1) 
+        y_hat_enhanced = y_hat_base + torch.cat(y_hat_slices_only_enhanced,dim = 1) #residual 
 
 
         if self.multiple_decoder:
@@ -201,7 +232,7 @@ class ProgressiveWACNN(WACNN):
         else:
             x_hat_base = self.g_s(y_hat_base)
 
-            y_hat_enhanced = self.g_s_prog(y_hat_enhanced)
+            #y_hat_enhanced = self.g_s_prog(y_hat_enhanced)
             x_hat_enhanced = self.g_s(y_hat_enhanced)
 
         #x_hat = torch.cat([x_hat_base, x_hat_enhanced],dim = 0) # [n_scalable_levels,...]
@@ -212,8 +243,8 @@ class ProgressiveWACNN(WACNN):
             "x_hat": x_hat_progressive,
             "likelihoods": {"y": y_likelihoods_base,"y_prog":y_likelihoods_enhanced,"z": z_likelihoods},
             "z_hat":z_hat
-        }
-
+        }   
+               
 
 
     def extract_mask(self,scale,  pr = 0):
@@ -253,14 +284,22 @@ class ProgressiveWACNN(WACNN):
 
 
         for slice_index,y_slice in enumerate(y_slices):
-            support_slices = (y_hat_slices if self.max_support_slices < 0 else y_hat_slices[:self.max_support_slices])
-
+            if self.shared_entropy_estimation is False:
+                support_slices = (y_hat_slices if self.max_support_slices < 0 \
+                                                        else y_hat_slices[:self.max_support_slices])
+            else:
+                indice = min(self.max_support_slices,slice_index%self.num_slice_cumulative_list[0])
+                support_slices = (y_hat_slices if self.max_support_slices < 0 \
+                                                        else y_hat_slices[:indice]) 
+                
+                
+            idx =  slice_index%self.num_slice_cumulative_list[0]  
             mean_support = torch.cat([latent_means] + support_slices, dim=1)
-            mu = self.cc_mean_transforms[slice_index](mean_support)
+            mu = self.cc_mean_transforms[idx](mean_support)
             mu = mu[:, :, :y_shape[0], :y_shape[1]]
 
             scale_support = torch.cat([latent_scales] + support_slices, dim=1)
-            scale = self.cc_scale_transforms[slice_index](scale_support)
+            scale = self.cc_scale_transforms[idx](scale_support)
             scale = scale[:, :, :y_shape[0], :y_shape[1]]           
 
             if slice_index < self.num_slice_cumulative_list[0] or quality == 0 or quality == 1:
@@ -282,7 +321,7 @@ class ProgressiveWACNN(WACNN):
             y_strings.append(y_q_string)
 
             lrp_support = torch.cat([mean_support,y_hat_slice], dim=1)
-            lrp = self.lrp_transforms[slice_index](lrp_support)
+            lrp = self.lrp_transforms[idx](lrp_support)
             lrp = 0.5 * torch.tanh(lrp)
             y_hat_slice += lrp
 
@@ -295,6 +334,10 @@ class ProgressiveWACNN(WACNN):
         return {"strings": [y_strings, z_strings],
                 "shape":z.size()[-2:]
                 }
+
+
+
+
 
 
 
@@ -314,18 +357,29 @@ class ProgressiveWACNN(WACNN):
         num_slices = self.num_slice_cumulative_list[0 if quality == 0 else 1]
 
 
-
+        y_hat_slices_base = []
+        y_hat_slices_enh = []
         for slice_index in range(num_slices):
+            
+            if self.shared_entropy_estimation is False:
+                support_slices = (y_hat_slices if self.max_support_slices < 0 \
+                                                        else y_hat_slices[:self.max_support_slices])
+            else:
+                indice = min(self.max_support_slices,slice_index%self.num_slice_cumulative_list[0])
+                support_slices = (y_hat_slices if self.max_support_slices < 0 \
+                                                        else y_hat_slices[:indice]) 
 
+            idx = slice_index%self.num_slice_cumulative_list[0]
+            
             pr_strings = y_string[slice_index]
 
-            support_slices = (y_hat_slices if self.max_support_slices < 0 else y_hat_slices[:self.max_support_slices])
+            
             mean_support = torch.cat([latent_means] + support_slices, dim=1)
-            mu = self.cc_mean_transforms[slice_index](mean_support)
+            mu = self.cc_mean_transforms[idx](mean_support)
             mu = mu[:, :, :y_shape[0], :y_shape[1]]
 
             scale_support = torch.cat([latent_scales] + support_slices, dim=1)
-            scale = self.cc_scale_transforms[slice_index](scale_support)
+            scale = self.cc_scale_transforms[idx](scale_support)
             scale = scale[:, :, :y_shape[0], :y_shape[1]]
 
             if slice_index <self.num_slice_cumulative_list[0] or quality == 0 or quality == 1 :
@@ -341,24 +395,27 @@ class ProgressiveWACNN(WACNN):
             y_hat_slice = self.gaussian_conditional.dequantize(rv, mu)
 
             lrp_support = torch.cat([mean_support, y_hat_slice], dim=1)
-            lrp = self.lrp_transforms[slice_index](lrp_support)
+            lrp = self.lrp_transforms[idx](lrp_support)
             lrp = 0.5 * torch.tanh(lrp)
             y_hat_slice += lrp
 
+            if quality == 0 or slice_index <self.num_slice_cumulative_list[0]:
+                y_hat_slices_base.append(y_hat_slice)
+            else:
+                y_hat_slices_enh.append(y_hat_slice)
+            
+            
             y_hat_slices.append(y_hat_slice)
 
 
-        y_hat = torch.cat(y_hat_slices, dim=1)
+        y_hat = torch.cat(y_hat_slices, dim=1) if quality == 0 else torch.cat(y_hat_slices_base, dim=1) + torch.cat(y_hat_slices_enh, dim=1)
+
+
 
         if self.multiple_decoder:
             x_hat = self.g_s[0 if quality == 0 else 1](y_hat).clamp_(0, 1)
         else:
-            if quality == 0:
-                x_hat = self.g_s(y_hat).clamp_(0, 1)
-            else: 
-                y_hat = self.g_s_prog(y_hat)   
-                x_hat = self.g_s(y_hat).clamp_(0, 1) 
-
+            x_hat = self.g_s(y_hat).clamp_(0, 1) 
         return {"x_hat": x_hat}   
 
 
@@ -383,15 +440,27 @@ class ProgressiveWACNN(WACNN):
         y_slices = y.chunk(self.num_slices, 1) # total amount of slices
 
         y_hat_slices = []
+        y_hat_slices_base = []
+        y_hat_slices_enh = []
         y_likelihood = []
 
         for slice_index, y_slice in enumerate(y_slices):
-            support_slices = (y_hat_slices if self.max_support_slices < 0 else y_hat_slices[:self.max_support_slices])
+            
+            if self.shared_entropy_estimation is False:
+                support_slices = (y_hat_slices if self.max_support_slices < 0 \
+                                                        else y_hat_slices[:self.max_support_slices])
+            else:
+                indice = min(self.max_support_slices,slice_index%self.num_slice_cumulative_list[0])
+                support_slices = (y_hat_slices if self.max_support_slices < 0 \
+                                                        else y_hat_slices[:indice])             
+
+            idx = slice_index%self.num_slice_cumulative_list[0]
+
             mean_support = torch.cat([latent_means] + support_slices, dim=1)
             scale_support = torch.cat([latent_scales] + support_slices, dim=1)           
-            mu = self.cc_mean_transforms[slice_index](mean_support)
+            mu = self.cc_mean_transforms[idx](mean_support)
             mu = mu[:, :, :y_shape[0], :y_shape[1]]              
-            scale = self.cc_scale_transforms[slice_index](scale_support)
+            scale = self.cc_scale_transforms[idx](scale_support)
             scale = scale[:, :, :y_shape[0], :y_shape[1]]
 
             if slice_index < self.num_slice_cumulative_list[0] or quality == 0 or quality == 1:
@@ -409,12 +478,18 @@ class ProgressiveWACNN(WACNN):
                 y_hat_slice = ste_round(y_slice - mu)*block_mask + mu
 
             lrp_support = torch.cat([mean_support,y_hat_slice], dim=1)
-            lrp = self.lrp_transforms[slice_index](lrp_support)
+            lrp = self.lrp_transforms[idx](lrp_support)
             lrp = 0.5 * torch.tanh(lrp)
             y_hat_slice += lrp               
 
             y_hat_slices.append(y_hat_slice)
             y_likelihood.append(y_slice_likelihood)
+            
+            
+            if quality == 0 or slice_index < self.num_slice_cumulative_list[0]:
+                y_hat_slices_base.append(y_hat_slice)
+            else:
+                y_hat_slices_enh.append(y_hat_slice)
 
 
             if quality == 0 and  slice_index == self.num_slice_cumulative_list[0] - 1:
@@ -438,4 +513,5 @@ class ProgressiveWACNN(WACNN):
             "x_hat": x_hat,
             "likelihoods": {"y": y_likelihoods,"z": z_likelihoods},
             "z_hat":z_hat
-        }
+        }     
+

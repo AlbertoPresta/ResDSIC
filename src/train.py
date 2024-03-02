@@ -283,7 +283,7 @@ def main(argv):
         
 
         if args.model == "progressive":
-            list_pr = [0,0.1,0.2,0.3,0.4,0.5,0.7,1]
+            list_pr = [0,0.1,0.3,0.5,0.7,1]
 
         bpp_t, psnr_t = test_epoch(epoch, 
                        test_dataloader,
@@ -306,7 +306,8 @@ def main(argv):
                                            epoch = epoch_enc, 
                                            pr_list =list_pr,  
                                             mask_pol = mask_pol,
-                                            writing = None)
+                                            writing = None,
+                                            progressive = progressive)
             psnr_res = {}
             bpp_res = {}
 
@@ -316,7 +317,13 @@ def main(argv):
             psnr_res["base"] =   [29.20, 30.59,32.26,34.15,35.91,37.72]
             bpp_res["base"] =  [0.127,0.199,0.309,0.449,0.649,0.895]
 
-            plot_rate_distorsion(bpp_res, psnr_res,epoch_enc)
+            plot_rate_distorsion(bpp_res, psnr_res,epoch_enc, eest="compression")
+            
+            bpp_res["our"] = bpp_t
+            psnr_res["our"] = psnr_t          
+            
+            
+            plot_rate_distorsion(bpp_res, psnr_res,epoch_enc, eest="model")
             epoch_enc += 1
 
 

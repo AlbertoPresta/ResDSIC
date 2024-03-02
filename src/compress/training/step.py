@@ -3,6 +3,7 @@ import wandb
 from compress.utils.functions import AverageMeter, read_image
 import math 
 import random
+from torch.nn.functional import mse_loss
 from pytorch_msssim import ms_ssim
 import torch.nn.functional as F 
 from compressai.ops import compute_padding
@@ -145,7 +146,7 @@ def valid_epoch(epoch, test_dataloader,criterion, model, pr_list = [0.05, 0.04, 
 
     loss = AverageMeter() 
     bpp_loss =AverageMeter() 
-    mse_loss = AverageMeter() 
+    mse_lss = AverageMeter() 
     
     psnr = AverageMeter() 
 
@@ -161,7 +162,7 @@ def valid_epoch(epoch, test_dataloader,criterion, model, pr_list = [0.05, 0.04, 
                     psnr_im = compute_psnr(d, out_net["x_hat"])
                     bpp_loss.update(out_criterion["bpp_loss"])
                     loss.update(out_criterion["loss"].clone().detach())
-                    mse_loss.update(out_criterion["mse_loss"].mean())
+                    mse_lss.update(out_criterion["mse_loss"].mean())
                     psnr.update(psnr_im)
                 else:
                     out_net = model.forward_single_quality(d, quality = p, training = False)
@@ -176,7 +177,7 @@ def valid_epoch(epoch, test_dataloader,criterion, model, pr_list = [0.05, 0.04, 
                     
                     bpp_loss.update(bpp)
 
-                    mse_loss.update(mse_loss(d, out_net["x_hat"]))
+                    mse_lss.update(mse_loss(d, out_net["x_hat"]))
                     psnr.update(psnr_im) 
                     out_net = model(d)
                     out_criterion = criterion(out_net, d, lmbda = p)
@@ -188,7 +189,7 @@ def valid_epoch(epoch, test_dataloader,criterion, model, pr_list = [0.05, 0.04, 
             "valid":epoch,
             "valid/loss": loss.avg,
             "valid/bpp":bpp_loss.avg,
-            "valid/mse": mse_loss.avg,
+            "valid/mse": mse_lss.avg,
             "valid/psnr":psnr.avg,
 
          #   "test/y_loss_"+ name[i]: y_loss[i].avg,
@@ -258,7 +259,7 @@ def test_epoch(epoch, test_dataloader,criterion, model, pr_list = [0, 0.1,0.2,0.
     return [bpp_loss[i].avg for i in range(len(bpp_loss))], [psnr[i].avg for i in range(len(psnr))]
 
 
-def compress_with_ac(model,  filelist, device, epoch, pr_list = [0.05,0.04,0.03,0.02,0.01], mask_pol = None,  writing = None):
+def compress_with_ac(model,  filelist, device, epoch, pr_list = [0.05,0.04,0.03,0.02,0.01], mask_pol = None,  writing = None, progressive = False):
     #pr_list = [0] + pr_list + [-1]
     #model.update(None, device)
     l = len(pr_list)
@@ -300,18 +301,26 @@ def compress_with_ac(model,  filelist, device, epoch, pr_list = [0.05,0.04,0.03,
                 num_pixels = size[0] * size[2] * size[3]
 
                 # calcolo lo stream del base 
-                data_string = data["strings"][:2]
-                bpp = sum(len(s[0]) for s in data_string) * 8.0 / num_pixels
-
-                if p != 0:
-                    data_string_hype = data["strings"][2]
-                    bpp_hype = sum(len(s) for s in data_string_hype) * 8.0 / num_pixels
-
-                    data_string_scale = data["strings"][-1] # questo è una lista
+                
+                if progressive:
+                    data_string_scale = data["strings"][0] # questo è una lista
                     bpp_scale = sum(len(s[0]) for s in data_string_scale) * 8.0 / num_pixels #ddddddd
+                    
+                    data_string_hype = data["strings"][1]
+                    bpp_hype = sum(len(s) for s in data_string_hype) * 8.0 / num_pixels
+                    
+                    bpp = bpp_hype + bpp_scale 
 
-                    bpp += bpp_scale 
-                    bpp += bpp_hype
+                else:
+                    if p != 0:
+                        data_string_hype = data["strings"][2]
+                        bpp_hype = sum(len(s) for s in data_string_hype) * 8.0 / num_pixels
+
+                        data_string_scale = data["strings"][-1] # questo è una lista
+                        bpp_scale = sum(len(s[0]) for s in data_string_scale) * 8.0 / num_pixels #ddddddd
+
+                        bpp += bpp_scale 
+                        bpp += bpp_hype
 
                 bpp_loss[j].update(bpp)
 

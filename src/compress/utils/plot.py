@@ -81,10 +81,10 @@ def BD_RATE(R1, PSNR1, R2, PSNR2, piecewise=0):
     return avg_diff
 
 
+import torch
 
 
-
-def plot_rate_distorsion(bpp_res, psnr_res,epoch):
+def plot_rate_distorsion(bpp_res, psnr_res,epoch, eest = "compression"):
 
 
     legenda = {}
@@ -126,6 +126,9 @@ def plot_rate_distorsion(bpp_res, psnr_res,epoch):
         markersize = legenda[type_name]["markersize"]
         leg = legenda[type_name]["legends"]
 
+
+        bpp = torch.tensor(bpp).cpu()
+        psnr = torch.tensor(psnr).cpu()
     
         plt.plot(bpp,psnr,"-" ,color = colore, label =  leg ,markersize=7)
         #for x, y, marker, markersize_t in zip(bpp, psnr, symbols, markersize):
@@ -165,8 +168,12 @@ def plot_rate_distorsion(bpp_res, psnr_res,epoch):
 
 
     plt.grid(True)
-    wandb.log({"Compression":epoch,
-              "Compression/rate distorsion trade-off": wandb.Image(plt)})
+    if eest == "model":
+        wandb.log({"model":epoch,
+              "model/rate distorsion trade-off": wandb.Image(plt)})
+    else:  
+        wandb.log({"compression":epoch,
+              "compression/rate distorsion trade-off": wandb.Image(plt)})       
     plt.close()  
     print("FINITO")
 
