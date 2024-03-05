@@ -57,7 +57,8 @@ def get_model(args,device, lmbda_list):
                                 dim_chunk = args.dim_chunk,
                                 division_dimension = args.division_dimension,
                                 lmbda_list = lmbda_list,
-                                shared_entropy_estimation = args.shared_entropy_estimation
+                                shared_entropy_estimation = args.shared_entropy_estimation,
+                                joiner_policy = args.joiner_policy
 
                         )       
        

@@ -38,6 +38,7 @@ class ProgressiveResWACNN(ProgressiveWACNN):
                 mask_policy = None,
                 lmbda_list = [0.075],
                 shared_entropy_estimation = False,
+                joiner_policy = "res",
                 **kwargs):
         
         super().__init__(N = N, 
@@ -49,11 +50,35 @@ class ProgressiveResWACNN(ProgressiveWACNN):
                          division_dimension=division_dimension,
                          **kwargs)
         
-        
+
+        assert joiner_policy in ("res","cond")
+        self.joiner_policy = joiner_policy 
         self.shared_entropy_estimation = shared_entropy_estimation
         
+
+        if self.joiner_policy == "channel_cond":
+            self.joiner = nn.ModuleList(
+                nn.Sequential(
+                    conv(self.dim_chunk*2, 64, stride=1, kernel_size=3),
+                    nn.GELU(),
+                    conv(64, 64, stride=1, kernel_size=3),
+                    nn.GELU(),
+                    conv(64, 32, stride=1, kernel_size=3),
+                ) for i in range(self.num_slice_cumulative_list[0])
+            )  
         
+        elif self.joiner_policy == "cond":
+            middle_dim =  int( (self.M + self.dimensions_M[0]/2))
+            self.joiner = nn.Sequential(
+                    conv(self.M, middle_dim, stride=1, kernel_size=3),
+                    nn.GELU(),
+                    conv( middle_dim,  middle_dim, stride=1, kernel_size=3),
+                    nn.GELU(),
+                    conv(middle_dim, self.dimensions_M[0], stride=1, kernel_size=3),
+                ) 
+             
         
+
         self.cc_mean_transforms = nn.ModuleList(
                 nn.Sequential(
                     conv(self.M + 32*min(i, 5), 224, stride=1, kernel_size=3),
@@ -121,6 +146,7 @@ class ProgressiveResWACNN(ProgressiveWACNN):
                         conv(64, 32, stride=1, kernel_size=3),
                     ) for i in range(self.num_slice_cumulative_list[1]- self.num_slice_cumulative_list[0])
                     )
+            """
             self.lrp_transforms_prog = nn.ModuleList(
                     nn.Sequential(
                         conv(self.M + 32 * min(i+1, 6), 224, stride=1, kernel_size=3),
@@ -133,7 +159,8 @@ class ProgressiveResWACNN(ProgressiveWACNN):
                         nn.GELU(),
                         conv(64, 32, stride=1, kernel_size=3),
                     ) for i in range(self.num_slice_cumulative_list[1] - self.num_slice_cumulative_list[0])
-                )  
+                )
+            """  
 
 
         if self.multiple_decoder:
@@ -173,10 +200,21 @@ class ProgressiveResWACNN(ProgressiveWACNN):
         print(" h_scale_a: ",sum(p.numel() for p in self.h_scale_s.parameters()))
         print("cc_mean_transforms",sum(p.numel() for p in self.cc_mean_transforms.parameters()))
         print("cc_scale_transforms",sum(p.numel() for p in self.cc_scale_transforms.parameters()))
+
+
+        if self.shared_entropy_estimation is False: 
+            print("cc_mean_transforms_prog",sum(p.numel() for p in self.cc_mean_transforms_prog.parameters()))
+            print("cc_scale_transforms_prog",sum(p.numel() for p in self.cc_scale_transforms_prog.parameters()))  
+
         print("lrp_transform",sum(p.numel() for p in self.lrp_transforms.parameters()))
         if self.multiple_decoder:
             for i in range(2):
                 print("g_s_" + str(i) + ": ",sum(p.numel() for p in self.g_s[i].parameters()))
+        else: 
+            print("g_s",sum(p.numel() for p in self.g_s.parameters()))
+
+        if self.joiner_policy == "cond":
+            print("joiner",sum(p.numel() for p in self.joiner.parameters()))  
         print("**************************************************************************")
         model_tr_parameters = sum(p.numel() for p in self.parameters() if p.requires_grad)
         model_fr_parameters = sum(p.numel() for p in self.parameters() if p.requires_grad== False)
@@ -204,16 +242,17 @@ class ProgressiveResWACNN(ProgressiveWACNN):
                 return  self.cc_scale_transforms_prog[idx](scale_support)
 
 
-    def extract_lrp(self,idx,slice_index, lrp_support):
-        if self.shared_entropy_estimation:
-            return  self.lrp_transforms[idx](lrp_support)
+    def extract_lrp(self,idx, lrp_support):
+        return  self.lrp_transforms[idx](lrp_support)
+
+
+    def merge(self,y_base,y_enhanced):
+
+
+        if self.joiner_policy == "res":
+            return y_base + y_enhanced 
         else: 
-            if slice_index < self.num_slice_cumulative_list[0]:
-                return  self.lrp_transforms[idx](lrp_support) 
-            else: 
-                return  self.lrp_transforms_prog[idx](lrp_support)
-
-
+            return self.joiner(y_base,y_enhanced)
 
     def forward(self,x, quality = None, mask_pol = None, training = True):
     
@@ -271,7 +310,7 @@ class ProgressiveResWACNN(ProgressiveWACNN):
                 y_hat_slice = ste_round(y_slice - mu)*block_mask + mu
 
             lrp_support = torch.cat([mean_support,y_hat_slice], dim=1)
-            lrp = self.extract_lrp(idx,slice_index,lrp_support)
+            lrp = self.extract_lrp(idx,lrp_support)
             #lrp = self.lrp_transforms[idx](lrp_support)
             lrp = 0.5 * torch.tanh(lrp)
             y_hat_slice += lrp               
@@ -291,7 +330,10 @@ class ProgressiveResWACNN(ProgressiveWACNN):
 
 
         y_hat_base = torch.cat(y_hat_slices_base,dim = 1)
-        y_hat_enhanced = y_hat_base + torch.cat(y_hat_slices_only_enhanced,dim = 1) #residual 
+        y_hat_only_enhanced =  torch.cat(y_hat_slices_only_enhanced,dim = 1)
+
+
+        y_hat_enhanced = self.merge(y_hat_base,y_hat_only_enhanced)   #residual 
 
 
         if self.multiple_decoder:
@@ -386,7 +428,7 @@ class ProgressiveResWACNN(ProgressiveWACNN):
             y_strings.append(y_q_string)
 
             lrp_support = torch.cat([mean_support,y_hat_slice], dim=1)
-            lrp = self.extract_lrp(idx,slice_index,lrp_support)
+            lrp = self.extract_lrp(idx,lrp_support)
             lrp = 0.5 * torch.tanh(lrp)
             y_hat_slice += lrp
 
@@ -456,7 +498,7 @@ class ProgressiveResWACNN(ProgressiveWACNN):
             y_hat_slice = self.gaussian_conditional.dequantize(rv, mu)
 
             lrp_support = torch.cat([mean_support, y_hat_slice], dim=1)
-            lrp = self.extract_lrp(idx, slice_index, lrp_support)
+            lrp = self.extract_lrp(idx,  lrp_support)
             lrp = 0.5 * torch.tanh(lrp)
             y_hat_slice += lrp
 
@@ -469,9 +511,10 @@ class ProgressiveResWACNN(ProgressiveWACNN):
             y_hat_slices.append(y_hat_slice)
 
 
-        y_hat = torch.cat(y_hat_slices, dim=1) if quality == 0 else torch.cat(y_hat_slices_base, dim=1) + torch.cat(y_hat_slices_enh, dim=1)
+        y_hat = torch.cat(y_hat_slices, dim=1) if quality == 0 else self.merge(torch.cat(y_hat_slices_base, dim=1),torch.cat(y_hat_slices_enh, dim=1))
 
 
+        
 
         if self.multiple_decoder:
             x_hat = self.g_s[0 if quality == 0 else 1](y_hat).clamp_(0, 1)
@@ -537,7 +580,7 @@ class ProgressiveResWACNN(ProgressiveWACNN):
                 y_hat_slice = ste_round(y_slice - mu)*block_mask + mu
 
             lrp_support = torch.cat([mean_support,y_hat_slice], dim=1)
-            lrp = self.extract_lrp(idx, slice_index,lrp_support)
+            lrp = self.extract_lrp(idx, lrp_support)
             lrp = 0.5 * torch.tanh(lrp)
             y_hat_slice += lrp               
 
@@ -557,7 +600,7 @@ class ProgressiveResWACNN(ProgressiveWACNN):
         y_likelihoods = torch.cat(y_likelihood, dim=1)
         
         
-        y_hat = torch.cat(y_hat_slices, dim=1) if quality == 0 else torch.cat(y_hat_slices_base, dim=1) + torch.cat(y_hat_slices_enh, dim=1) 
+        y_hat = torch.cat(y_hat_slices, dim=1) if quality == 0 else self.merge(torch.cat(y_hat_slices_base, dim=1),torch.cat(y_hat_slices_enh, dim=1)) 
 
 
 
