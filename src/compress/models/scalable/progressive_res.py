@@ -53,8 +53,8 @@ class ProgressiveResWACNN(ProgressiveWACNN):
         self.shared_entropy_estimation = shared_entropy_estimation
         
         
-        if self.shared_entropy_estimation: 
-            self.cc_mean_transforms = nn.ModuleList(
+        
+        self.cc_mean_transforms = nn.ModuleList(
                 nn.Sequential(
                     conv(self.M + 32*min(i, 5), 224, stride=1, kernel_size=3),
                     nn.GELU(),
@@ -67,7 +67,7 @@ class ProgressiveResWACNN(ProgressiveWACNN):
                     conv(64, 32, stride=1, kernel_size=3),
                 ) for i in range(self.num_slice_cumulative_list[0])
             )
-            self.cc_scale_transforms = nn.ModuleList(
+        self.cc_scale_transforms = nn.ModuleList(
                 nn.Sequential(
                     conv(self.M + 32 * min(i, 5), 224, stride=1, kernel_size=3),
                     nn.GELU(),
@@ -80,7 +80,7 @@ class ProgressiveResWACNN(ProgressiveWACNN):
                     conv(64, 32, stride=1, kernel_size=3),
                 ) for i in range(self.num_slice_cumulative_list[0])
                 )
-            self.lrp_transforms = nn.ModuleList(
+        self.lrp_transforms = nn.ModuleList(
                 nn.Sequential(
                     conv(self.M + 32 * min(i+1, 6), 224, stride=1, kernel_size=3),
                     nn.GELU(),
@@ -92,7 +92,48 @@ class ProgressiveResWACNN(ProgressiveWACNN):
                     nn.GELU(),
                     conv(64, 32, stride=1, kernel_size=3),
                 ) for i in range(self.num_slice_cumulative_list[0])
-            )           
+            )  
+
+        if self.shared_entropy_estimation is False: 
+            self.cc_mean_transforms_prog = nn.ModuleList(
+                    nn.Sequential(
+                        conv(self.M + 32*min(i, 5), 224, stride=1, kernel_size=3),
+                        nn.GELU(),
+                        conv(224, 176, stride=1, kernel_size=3),
+                        nn.GELU(),
+                        conv(176, 128, stride=1, kernel_size=3),
+                        nn.GELU(),
+                        conv(128, 64, stride=1, kernel_size=3),
+                        nn.GELU(),
+                        conv(64, 32, stride=1, kernel_size=3),
+                    ) for i in range(self.num_slice_cumulative_list[1] - self.num_slice_cumulative_list[0] )
+                )
+            self.cc_scale_transforms_prog = nn.ModuleList(
+                    nn.Sequential(
+                        conv(self.M + 32 * min(i, 5), 224, stride=1, kernel_size=3),
+                        nn.GELU(),
+                        conv(224, 176, stride=1, kernel_size=3),
+                        nn.GELU(),
+                        conv(176, 128, stride=1, kernel_size=3),
+                        nn.GELU(),
+                        conv(128, 64, stride=1, kernel_size=3),
+                        nn.GELU(),
+                        conv(64, 32, stride=1, kernel_size=3),
+                    ) for i in range(self.num_slice_cumulative_list[1]- self.num_slice_cumulative_list[0])
+                    )
+            self.lrp_transforms_prog = nn.ModuleList(
+                    nn.Sequential(
+                        conv(self.M + 32 * min(i+1, 6), 224, stride=1, kernel_size=3),
+                        nn.GELU(),
+                        conv(224, 176, stride=1, kernel_size=3),
+                        nn.GELU(),
+                        conv(176, 128, stride=1, kernel_size=3),
+                        nn.GELU(),
+                        conv(128, 64, stride=1, kernel_size=3),
+                        nn.GELU(),
+                        conv(64, 32, stride=1, kernel_size=3),
+                    ) for i in range(self.num_slice_cumulative_list[1] - self.num_slice_cumulative_list[0])
+                )  
 
 
         if self.multiple_decoder:
@@ -144,15 +185,42 @@ class ProgressiveResWACNN(ProgressiveWACNN):
         return sum(p.numel() for p in self.parameters() if p.requires_grad)
     
     
+    def extract_mu(self,idx,slice_index, mean_support):
+        if self.shared_entropy_estimation:
+            return  self.cc_mean_transforms[idx](mean_support) 
+        else: 
+            if slice_index < self.num_slice_cumulative_list[0]:
+                return  self.cc_mean_transforms[idx](mean_support) 
+            else: 
+                return  self.cc_mean_transforms_prog[idx](mean_support)
+
+    def extract_scale(self,idx,slice_index, scale_support):
+        if self.shared_entropy_estimation:
+            return  self.cc_scale_transforms[idx](scale_support) 
+        else: 
+            if slice_index < self.num_slice_cumulative_list[0]:
+                return  self.cc_scale_transforms[idx](scale_support) 
+            else: 
+                return  self.cc_scale_transforms_prog[idx](scale_support)
+
+
+    def extract_lrp(self,idx,slice_index, lrp_support):
+        if self.shared_entropy_estimation:
+            return  self.lrp_transforms[idx](lrp_support)
+        else: 
+            if slice_index < self.num_slice_cumulative_list[0]:
+                return  self.lrp_transforms[idx](lrp_support) 
+            else: 
+                return  self.lrp_transforms_prog[idx](lrp_support)
+
+
+
     def forward(self,x, quality = None, mask_pol = None, training = True):
     
-
-
         y = self.g_a(x)
         y_shape = y.shape[2:]
         z = self.h_a(y)
         _, z_likelihoods = self.entropy_bottleneck(z)
-
 
         z_offset = self.entropy_bottleneck._get_medians()
         z_tmp = z - z_offset
@@ -173,20 +241,19 @@ class ProgressiveResWACNN(ProgressiveWACNN):
 
 
         for slice_index, y_slice in enumerate(y_slices):
-            if self.shared_entropy_estimation is False:
-                support_slices = (y_hat_slices_enhanced if self.max_support_slices < 0 \
-                                                        else y_hat_slices_enhanced[:self.max_support_slices])
-            else:
-                indice = min(self.max_support_slices,slice_index%self.num_slice_cumulative_list[0])
-                support_slices = (y_hat_slices_enhanced if self.max_support_slices < 0 \
+            indice = min(self.max_support_slices,slice_index%self.num_slice_cumulative_list[0])
+            support_slices = (y_hat_slices_enhanced if self.max_support_slices < 0 \
                                                         else y_hat_slices_enhanced[:indice])               
             
             idx = slice_index%self.num_slice_cumulative_list[0]
             mean_support = torch.cat([latent_means] + support_slices, dim=1)
-            scale_support = torch.cat([latent_scales] + support_slices, dim=1)           
-            mu = self.cc_mean_transforms[idx](mean_support)
-            mu = mu[:, :, :y_shape[0], :y_shape[1]]              
-            scale = self.cc_scale_transforms[idx](scale_support)
+            scale_support = torch.cat([latent_scales] + support_slices, dim=1) 
+
+            
+            mu = self.extract_mu(idx,slice_index,mean_support)
+            mu = mu[:, :, :y_shape[0], :y_shape[1]]  
+
+            scale = self.extract_scale(idx,slice_index,scale_support)
             scale = scale[:, :, :y_shape[0], :y_shape[1]]
 
             if quality is None:
@@ -204,7 +271,8 @@ class ProgressiveResWACNN(ProgressiveWACNN):
                 y_hat_slice = ste_round(y_slice - mu)*block_mask + mu
 
             lrp_support = torch.cat([mean_support,y_hat_slice], dim=1)
-            lrp = self.lrp_transforms[idx](lrp_support)
+            lrp = self.extract_lrp(idx,slice_index,lrp_support)
+            #lrp = self.lrp_transforms[idx](lrp_support)
             lrp = 0.5 * torch.tanh(lrp)
             y_hat_slice += lrp               
 
@@ -284,22 +352,19 @@ class ProgressiveResWACNN(ProgressiveWACNN):
 
 
         for slice_index,y_slice in enumerate(y_slices):
-            if self.shared_entropy_estimation is False:
-                support_slices = (y_hat_slices if self.max_support_slices < 0 \
-                                                        else y_hat_slices[:self.max_support_slices])
-            else:
-                indice = min(self.max_support_slices,slice_index%self.num_slice_cumulative_list[0])
-                support_slices = (y_hat_slices if self.max_support_slices < 0 \
+
+            indice = min(self.max_support_slices,slice_index%self.num_slice_cumulative_list[0])
+            support_slices = (y_hat_slices if self.max_support_slices < 0 \
                                                         else y_hat_slices[:indice]) 
                 
                 
             idx =  slice_index%self.num_slice_cumulative_list[0]  
             mean_support = torch.cat([latent_means] + support_slices, dim=1)
-            mu = self.cc_mean_transforms[idx](mean_support)
+            mu =  self.extract_mu(idx,slice_index,mean_support)
             mu = mu[:, :, :y_shape[0], :y_shape[1]]
 
             scale_support = torch.cat([latent_scales] + support_slices, dim=1)
-            scale = self.cc_scale_transforms[idx](scale_support)
+            scale = self.extract_scale(idx,slice_index,scale_support)
             scale = scale[:, :, :y_shape[0], :y_shape[1]]           
 
             if slice_index < self.num_slice_cumulative_list[0] or quality == 0 or quality == 1:
@@ -321,7 +386,7 @@ class ProgressiveResWACNN(ProgressiveWACNN):
             y_strings.append(y_q_string)
 
             lrp_support = torch.cat([mean_support,y_hat_slice], dim=1)
-            lrp = self.lrp_transforms[idx](lrp_support)
+            lrp = self.extract_lrp(idx,slice_index,lrp_support)
             lrp = 0.5 * torch.tanh(lrp)
             y_hat_slice += lrp
 
@@ -360,13 +425,9 @@ class ProgressiveResWACNN(ProgressiveWACNN):
         y_hat_slices_base = []
         y_hat_slices_enh = []
         for slice_index in range(num_slices):
-            
-            if self.shared_entropy_estimation is False:
-                support_slices = (y_hat_slices if self.max_support_slices < 0 \
-                                                        else y_hat_slices[:self.max_support_slices])
-            else:
-                indice = min(self.max_support_slices,slice_index%self.num_slice_cumulative_list[0])
-                support_slices = (y_hat_slices if self.max_support_slices < 0 \
+
+            indice = min(self.max_support_slices,slice_index%self.num_slice_cumulative_list[0])
+            support_slices = (y_hat_slices if self.max_support_slices < 0 \
                                                         else y_hat_slices[:indice]) 
 
             idx = slice_index%self.num_slice_cumulative_list[0]
@@ -375,11 +436,11 @@ class ProgressiveResWACNN(ProgressiveWACNN):
 
             
             mean_support = torch.cat([latent_means] + support_slices, dim=1)
-            mu = self.cc_mean_transforms[idx](mean_support)
+            mu = self.extract_mu(idx, slice_index, mean_support)
             mu = mu[:, :, :y_shape[0], :y_shape[1]]
 
             scale_support = torch.cat([latent_scales] + support_slices, dim=1)
-            scale = self.cc_scale_transforms[idx](scale_support)
+            scale = self.extract_scale(idx, slice_index, scale_support)
             scale = scale[:, :, :y_shape[0], :y_shape[1]]
 
             if slice_index <self.num_slice_cumulative_list[0] or quality == 0 or quality == 1 :
@@ -395,7 +456,7 @@ class ProgressiveResWACNN(ProgressiveWACNN):
             y_hat_slice = self.gaussian_conditional.dequantize(rv, mu)
 
             lrp_support = torch.cat([mean_support, y_hat_slice], dim=1)
-            lrp = self.lrp_transforms[idx](lrp_support)
+            lrp = self.extract_lrp(idx, slice_index, lrp_support)
             lrp = 0.5 * torch.tanh(lrp)
             y_hat_slice += lrp
 
@@ -446,21 +507,19 @@ class ProgressiveResWACNN(ProgressiveWACNN):
 
         for slice_index, y_slice in enumerate(y_slices):
             
-            if self.shared_entropy_estimation is False:
-                support_slices = (y_hat_slices if self.max_support_slices < 0 \
-                                                        else y_hat_slices[:self.max_support_slices])
-            else:
-                indice = min(self.max_support_slices,slice_index%self.num_slice_cumulative_list[0])
-                support_slices = (y_hat_slices if self.max_support_slices < 0 \
+
+            indice = min(self.max_support_slices,slice_index%self.num_slice_cumulative_list[0])
+            support_slices = (y_hat_slices if self.max_support_slices < 0 \
                                                         else y_hat_slices[:indice])             
 
             idx = slice_index%self.num_slice_cumulative_list[0]
 
             mean_support = torch.cat([latent_means] + support_slices, dim=1)
-            scale_support = torch.cat([latent_scales] + support_slices, dim=1)           
-            mu = self.cc_mean_transforms[idx](mean_support)
+            scale_support = torch.cat([latent_scales] + support_slices, dim=1)  
+                     
+            mu = self.extract_mu(idx, slice_index,mean_support)
             mu = mu[:, :, :y_shape[0], :y_shape[1]]              
-            scale = self.cc_scale_transforms[idx](scale_support)
+            scale = self.extract_scale(idx, slice_index,scale_support)
             scale = scale[:, :, :y_shape[0], :y_shape[1]]
 
             if slice_index < self.num_slice_cumulative_list[0] or quality == 0 or quality == 1:
@@ -478,7 +537,7 @@ class ProgressiveResWACNN(ProgressiveWACNN):
                 y_hat_slice = ste_round(y_slice - mu)*block_mask + mu
 
             lrp_support = torch.cat([mean_support,y_hat_slice], dim=1)
-            lrp = self.lrp_transforms[idx](lrp_support)
+            lrp = self.extract_lrp(idx, slice_index,lrp_support)
             lrp = 0.5 * torch.tanh(lrp)
             y_hat_slice += lrp               
 
@@ -496,17 +555,16 @@ class ProgressiveResWACNN(ProgressiveWACNN):
                 break
 
         y_likelihoods = torch.cat(y_likelihood, dim=1)
-        y_hat_enhanced = torch.cat(y_hat_slices,dim = 1) 
+        
+        
+        y_hat = torch.cat(y_hat_slices, dim=1) if quality == 0 else torch.cat(y_hat_slices_base, dim=1) + torch.cat(y_hat_slices_enh, dim=1) 
+
 
 
         if self.multiple_decoder:
-            x_hat = self.g_s[0 if quality==0 else 1](y_hat_enhanced)
+            x_hat = self.g_s[0 if quality == 0 else 1](y_hat).clamp_(0, 1) #dddd
         else:
-            if quality > 0:
-                y_hat_enhanced = self.g_s_prog(y_hat_enhanced)
-                x_hat = self.g_s(y_hat_enhanced)
-            else: 
-                x_hat = self.g_s(y_hat_enhanced)
+            x_hat = self.g_s(y_hat).clamp_(0, 1) 
 
 
         return {

@@ -20,6 +20,7 @@ from .scalable.shared_entropy import ResWACNNSharedEntropy
 from .scalable.independent_entropy import ResWACNNIndependentEntropy
 from .scalable.conditional_independent import ResWACNNConditionalIndependentEntropy
 from .scalable.progressive import ProgressiveWACNN
+from .scalable.progressive_res import ProgressiveResWACNN
 
 
 models = {
@@ -29,7 +30,8 @@ models = {
     "shared":ResWACNNSharedEntropy,
     "independent":ResWACNNIndependentEntropy,
     "cond_ind":ResWACNNConditionalIndependentEntropy,
-    "progressive": ProgressiveWACNN
+    "progressive": ProgressiveWACNN,
+    "progressive_res":ProgressiveResWACNN
 }
 
 
@@ -48,7 +50,17 @@ def get_model(args,device, lmbda_list):
 
                         )       
 
+    elif args.model == "progressive_res":
+        net = models[args.model]( N = args.N,
+                                M = args.M,
+                                multiple_decoder = args.multiple_decoder,
+                                dim_chunk = args.dim_chunk,
+                                division_dimension = args.division_dimension,
+                                lmbda_list = lmbda_list,
+                                shared_entropy_estimation = args.shared_entropy_estimation
 
+                        )       
+       
     elif args.model == "shared":
         net = models[args.model]( N = args.N,
                                 M = args.M,

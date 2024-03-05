@@ -10,9 +10,9 @@ def parse_args(argv):
     parser.add_argument("-e","--epochs",default=120,type=int,help="Number of epochs (default: %(default)s)",)
     parser.add_argument( "-lr", "--learning-rate", default=1e-4, type=float, help="Learning rate (default: %(default)s)",)
     parser.add_argument("-n","--num-workers",type=int,default=8,help="Dataloaders threads (default: %(default)s)",)
+    #dddd
 
-
-    parser.add_argument("--lambda_list",dest="lmbda_list", nargs='+', type=float, default = [ 0.0018, 0.050])
+    parser.add_argument("--lambda_list",dest="lmbda_list", nargs='+', type=float, default = [ 0.0050, 0.050])
     parser.add_argument("--division_dimension", nargs='+', type=int, default = [320, 480])
     parser.add_argument( "--batch_size", type=int, default=16, help="Batch size (default: %(default)s)")
     parser.add_argument( "--dim_chunk", type=int, default=32, help="Batch size (default: %(default)s)")
@@ -34,6 +34,7 @@ def parse_args(argv):
     parser.add_argument("--freeze", action="store_true", help="Use cuda")
     parser.add_argument("--save", action="store_true", default=True, help="Save model to disk")
     parser.add_argument("--multiple_decoder", action="store_true", help="Use cuda")
+    parser.add_argument("-see","--shared_entropy_estimation", action="store_true", help="Use cuda")
     parser.add_argument("--lrp_prog", action="store_true", help="use common lrp for progressive")
     parser.add_argument("--ind_lrp", action="store_true", help="use common lrp for progressive")
     parser.add_argument("--continue_training", action="store_true", help="continue training of the checkpoint")

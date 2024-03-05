@@ -144,7 +144,7 @@ def main(argv):
         lmbda_list = args.lmbda_list
 
     net = get_model(args,device, lmbda_list)
-    progressive = False if args.model != "progressive" else True
+    progressive = False if "progressive" not in args.model else True
 
 
 
@@ -282,7 +282,7 @@ def main(argv):
             list_pr = [0,1]
         
 
-        if args.model == "progressive":
+        if "progressive"in args.model:
             list_pr = [0,0.1,0.3,0.5,0.7,1]
 
         bpp_t, psnr_t = test_epoch(epoch, 
