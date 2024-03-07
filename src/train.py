@@ -144,7 +144,11 @@ def main(argv):
         lmbda_list = args.lmbda_list
 
     net = get_model(args,device, lmbda_list)
-    progressive = False if "progressive" not in args.model else True
+    if args.model in ("progressive_res","progressive_maks","progressive_res","channel"):
+        progressive = True
+    else:
+        progressive = False
+
 
 
 
@@ -282,8 +286,21 @@ def main(argv):
             list_pr = [0,1]
         
 
-        if "progressive"in args.model:
-            list_pr = [0,0.1,0.3,0.5,0.7,1]
+        
+
+        if "progressive_mask" == args.model and args.mask_policy == "point-based-std":
+            list_pr = net.quality_list
+            mask_pol = net.mask_policy
+        elif "progressive" in args.model and "mask" not in args.model:
+            list_pr = [0,0.15,0.25,0.5,0.65,0.75,1]
+            mask_pol = "point-based-std"
+        
+        if "channel" in args.model:
+            list_pr = [0,0.15,0.25,0.5,0.65,0.75,1]
+            mask_pol = "point-based-std"
+        
+                   
+
 
         bpp_t, psnr_t = test_epoch(epoch, 
                        test_dataloader,

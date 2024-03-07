@@ -19,8 +19,9 @@ from .scalable.scalable_cnn import ResWACNN
 from .scalable.shared_entropy import ResWACNNSharedEntropy
 from .scalable.independent_entropy import ResWACNNIndependentEntropy
 from .scalable.conditional_independent import ResWACNNConditionalIndependentEntropy
-from .scalable.progressive import ProgressiveWACNN
+from .scalable.progressive import ProgressiveWACNN,ProgressiveMaskedWACNN
 from .scalable.progressive_res import ProgressiveResWACNN
+from .scalable.CHP_res import ChannelProgresssiveWACNN
 
 
 models = {
@@ -31,7 +32,9 @@ models = {
     "independent":ResWACNNIndependentEntropy,
     "cond_ind":ResWACNNConditionalIndependentEntropy,
     "progressive": ProgressiveWACNN,
-    "progressive_res":ProgressiveResWACNN
+    "progressive_mask": ProgressiveMaskedWACNN,
+    "progressive_res":ProgressiveResWACNN,
+    "channel":ChannelProgresssiveWACNN
 }
 
 
@@ -49,7 +52,29 @@ def get_model(args,device, lmbda_list):
                                 lmbda_list = lmbda_list
 
                         )       
+    elif args.model == "progressive_mask":
 
+        net = models[args.model]( N = args.N,
+                                M = args.M,
+                                multiple_decoder = args.multiple_decoder,
+                                dim_chunk = args.dim_chunk,
+                                division_dimension = args.division_dimension,
+                                lmbda_list = lmbda_list,
+                                mask_policy = args.mask_policy
+                        )  
+    
+    elif args.model == "channel":
+        net = models[args.model]( N = args.N,
+                                M = args.M,
+                                multiple_decoder = args.multiple_decoder,
+                                dim_chunk = args.dim_chunk,
+                                division_dimension = args.division_dimension,
+                                lmbda_list = lmbda_list,
+                                mask_policy = args.mask_policy,
+                                joiner_policy = args.joiner_policy,
+                                support_progressive_slices =2,
+                                shared_entropy_estimation = False
+                        )  
     elif args.model == "progressive_res":
         net = models[args.model]( N = args.N,
                                 M = args.M,

@@ -146,21 +146,7 @@ class ProgressiveResWACNN(ProgressiveWACNN):
                         conv(64, 32, stride=1, kernel_size=3),
                     ) for i in range(self.num_slice_cumulative_list[1]- self.num_slice_cumulative_list[0])
                     )
-            """
-            self.lrp_transforms_prog = nn.ModuleList(
-                    nn.Sequential(
-                        conv(self.M + 32 * min(i+1, 6), 224, stride=1, kernel_size=3),
-                        nn.GELU(),
-                        conv(224, 176, stride=1, kernel_size=3),
-                        nn.GELU(),
-                        conv(176, 128, stride=1, kernel_size=3),
-                        nn.GELU(),
-                        conv(128, 64, stride=1, kernel_size=3),
-                        nn.GELU(),
-                        conv(64, 32, stride=1, kernel_size=3),
-                    ) for i in range(self.num_slice_cumulative_list[1] - self.num_slice_cumulative_list[0])
-                )
-            """  
+
 
 
         if self.multiple_decoder:
@@ -615,4 +601,5 @@ class ProgressiveResWACNN(ProgressiveWACNN):
             "likelihoods": {"y": y_likelihoods,"z": z_likelihoods},
             "z_hat":z_hat
         }     
+
 

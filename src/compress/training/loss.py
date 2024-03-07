@@ -72,30 +72,33 @@ class ScalableRateDistortionLoss(nn.Module):
 
 
 
-        denominator = -math.log(2) * num_pixels  # (batch_size * perce, 1
+        
         out["mse_loss"] = mse_loss(extend_images,output["x_hat"],reduction = 'none') # compute the point-wise mse #((scales * (extend_images - output["x_hat"])) ** 2).mean()*self.weight
         out["mse_loss"] = out["mse_loss"].mean(dim=(1,2,3,4)) #dim = num_levels 
 
 
-
+        denominator = -math.log(2) * num_pixels  # (batch_size * perce, 1
         likelihoods = output["likelihoods"]
-
-        out["bpp_base"] = (torch.log(likelihoods["y"].squeeze(0)).sum())/denominator
-
         out["bpp_hype"] =  (torch.log(likelihoods["z"]).sum())/denominator
 
         if "z_prog" in list(out.keys()):
             out["bpp_hype"] = out["bpp_hype"] +  torch.log(likelihoods["z_prog"]).sum()/denominator
 
 
-        out["bpp_scalable"] = (torch.log(likelihoods["y_prog"]).sum()).sum()/denominator 
 
-        #out["bpp_scalable"] = torch.zeros_like(out["bpp_base"]).to(out["bpp_base"].device)#
-        #prova = torch.log(likelihoods["y_prog"][0]).sum()/denominator
-        #print("questo numero dovrebbe essere 2: ",batch_size_recon)
 
-        out["bpp_loss"] = out["bpp_scalable"] + batch_size_recon*(out["bpp_base"] + out["bpp_hype"])
-        #out["bpp_loss"] = out["bpp_scalable"] + out["bpp_base"]
+        if "y_prog" in list(likelihoods.keys()):
+            out["bpp_base"] = (torch.log(likelihoods["y"]).sum())/denominator
+            out["bpp_scalable"] = (torch.log(likelihoods["y_prog"]).sum()).sum()/denominator 
+            out["bpp_loss"] = out["bpp_scalable"] +  out["bpp_base"] + batch_size_recon*(out["bpp_hype"])
+        else: 
+            out["bpp_base"] = (torch.log(likelihoods["y"].squeeze(0)).sum())/denominator
+            out["bpp_scalable"] = (torch.log(likelihoods["y"][:,1:,:,:,:].squeeze(0)).sum())/denominator
+            out["bpp_loss"] = out["bpp_scalable"] + out["bpp_base"] + batch_size_recon*(out["bpp_hype"])
+
+
+
+
 
         #out["bpp_loss"] = out["bpp_base"]
 

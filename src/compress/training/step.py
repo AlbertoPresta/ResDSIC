@@ -75,7 +75,7 @@ def train_one_epoch(model,
         mse_loss.update(out_criterion["mse_loss"].mean().clone().detach())
         bpp_loss.update(out_criterion["bpp_loss"].clone().detach())
         bpp_scalable.update(out_criterion["bpp_scalable"].clone().detach())
-        bpp_main.update(out_criterion["bpp_base"].clone().detach())
+        #bpp_main.update(out_criterion["bpp_base"].clone().detach())
 
 
         wand_dict = {
@@ -83,7 +83,7 @@ def train_one_epoch(model,
             "train_batch/loss": out_criterion["loss"].clone().detach().item(),
             "train_batch/bpp_total": out_criterion["bpp_loss"].clone().detach().item(),
             "train_batch/mse":out_criterion["mse_loss"].mean().clone().detach().item(),
-            "train_batch/bpp_base":out_criterion["bpp_base"].clone().detach().item(),
+            #"train_batch/bpp_base":out_criterion["bpp_base"].clone().detach().item(),
             "train_batch/bpp_progressive":out_criterion["bpp_scalable"].clone().detach().item(),
 
 
@@ -112,7 +112,7 @@ def train_one_epoch(model,
         "train/bpp": bpp_loss.avg,
         "train/mse": mse_loss.avg,
         "train/bpp_progressive":bpp_scalable.avg,
-        "train/bpp_base":bpp_main.avg,
+       # "train/bpp_base":bpp_main.avg,
 
         }
         
