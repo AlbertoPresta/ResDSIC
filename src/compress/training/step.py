@@ -35,6 +35,8 @@ def train_one_epoch(model,
     mse_loss = AverageMeter()
     bpp_scalable = AverageMeter()
     bpp_main = AverageMeter()
+    kd_enh = AverageMeter()
+    kd_base = AverageMeter()
 
 
 
@@ -77,6 +79,11 @@ def train_one_epoch(model,
         bpp_scalable.update(out_criterion["bpp_scalable"].clone().detach())
         #bpp_main.update(out_criterion["bpp_base"].clone().detach())
 
+        if "kd_enh" in list(out_criterion.keys()):
+            kd_enh.update(out_criterion["kd_enh"].clone().detach())
+        if "kd_base" in list(out_criterion.keys()):
+            kd_enh.update(out_criterion["kd_base"].clone().detach())
+
 
         wand_dict = {
             "train_batch": counter,
@@ -85,10 +92,21 @@ def train_one_epoch(model,
             "train_batch/mse":out_criterion["mse_loss"].mean().clone().detach().item(),
             #"train_batch/bpp_base":out_criterion["bpp_base"].clone().detach().item(),
             "train_batch/bpp_progressive":out_criterion["bpp_scalable"].clone().detach().item(),
-
-
         }
         wandb.log(wand_dict)
+
+        if "kd_enh" in list(out_criterion.keys()):
+            wand_dict = {
+                "train_batch": counter, 
+                "train_batch/kd_enh": out_criterion["kd_enh"].clone().detach().item(),
+            }
+            wandb.log(wand_dict)
+        if "kd_base" in list(out_criterion.keys()):
+            wand_dict = {
+                "train_batch": counter, 
+                "train_batch/kd_base": out_criterion["kd_base"].clone().detach().item(),
+            }
+            wandb.log(wand_dict)
         counter += 1
 
 
@@ -325,7 +343,7 @@ def compress_with_ac(model,  filelist, device, epoch, pr_list = [0.05,0.04,0.03,
                 bpp_loss[j].update(bpp)
 
                 if writing is not None:
-                    fls = writing + "/" +  name + "/_" +  str(epoch) +  "_.txt"
+                    fls = writing + "/" +  name + "_.txt"
                     f=open(fls , "a+")
                     f.write("SEQUENCE "  +   nome_immagine + " BITS " +  str(bpp) + " PSNR " +  str(psnr_im)  + " MSSIM " +  str(ms_ssim_im) + "\n")
                     f.close()  
@@ -349,10 +367,13 @@ def compress_with_ac(model,  filelist, device, epoch, pr_list = [0.05,0.04,0.03,
             wandb.log(log_dict)
 
 
+    
     #print("enhanced compression results : ",bpp_loss.avg," ",psnr_val.avg," ",mssim_val.avg)
     if writing is not None:
-
-        fls = writing + "/" +  name + "/_" +  str(epoch) +  "_.txt"
-        f=open(fls , "a+")
-        f.write("SEQUENCE "  +   "AVG " + "BITS " +  str(bpp_loss.avg) + " YPSNR " +  str(psnr.avg)  + " YMSSIM " +  str(mssim.avg) + "\n")
+        for j,p in enumerate(pr_list):
+            name = name = "level_" + str(j)
+            fls = writing + "/" +  name + "_.txt"
+            f=open(fls , "a+")
+            f.write("SEQUENCE "  +   "AVG " + "BITS " +  str(bpp_loss[j].avg) + " YPSNR " +  str(psnr[j].avg)  + " YMSSIM " +  str(mssim[j].avg) + "\n")
+            f.close()
     return [bpp_loss[i].avg for i in range(len(bpp_loss))], [psnr[i].avg for i in range(len(psnr))]

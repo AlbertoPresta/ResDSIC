@@ -40,12 +40,14 @@ class ProgressiveWACNN(WACNN):
                 multiple_decoder = True,
                 mask_policy = None,
                 lmbda_list = [0.075],
+                inner_dimensions = [192,192],
                 **kwargs):
         
         super().__init__(N = N, M = M,dim_chunk = dim_chunk,   **kwargs)
 
 
         self.lmbda_list = lmbda_list
+        self.inner_dimensions = inner_dimensions
         self.N = N 
         self.M = M 
         self.division_dimension = division_dimension
@@ -76,13 +78,15 @@ class ProgressiveWACNN(WACNN):
 
 
         if self.multiple_decoder:
-
+            
             self.g_s = nn.ModuleList(
                         nn.Sequential(
                         Win_noShift_Attention(dim= self.dimensions_M[i], num_heads=8, window_size=4, shift_size=2),
-                        deconv(self.dimensions_M[i], N, kernel_size=5, stride=2),
-                        GDN(N, inverse=True),
-                        deconv(N, N, kernel_size=5, stride=2),
+                        deconv(self.dimensions_M[i], self.inner_dimensions[i], kernel_size=5, stride=2),
+                        # qua posso mettere KD 
+                        GDN(self.inner_dimensions[i], inverse=True),
+                        
+                        deconv(self.inner_dimensions[i], N, kernel_size=5, stride=2),
                         GDN(N, inverse=True),
                         Win_noShift_Attention(dim=N, num_heads=8, window_size=8, shift_size=4),
                         deconv(N, N, kernel_size=5, stride=2),
@@ -109,6 +113,9 @@ class ProgressiveWACNN(WACNN):
                         nn.Conv2d(self.dimensions_M[1],self.dimensions_M[0], kernel_size=3, stride=1, padding = 1),
                           
             )
+
+
+
 
         
     def print_information(self):
@@ -175,7 +182,7 @@ class ProgressiveWACNN(WACNN):
 
                 current_index =slice_index%self.num_slice_cumulative_list[0]
                 block_mask = self.masking(scale,slice_index = current_index, pr = quality, mask_pol = mask_pol)
-                block_mask = self.masking.apply_noise(block_mask,tr = training if "learnable" in self.mask_policy else False)
+                #block_mask = self.masking.apply_noise(block_mask,tr = training if "learnable" in self.mask_policy else False)
                 scale = scale*block_mask
 
                 y_slice_m = y_slice  - mu
@@ -273,7 +280,7 @@ class ProgressiveWACNN(WACNN):
             scale = self.cc_scale_transforms[slice_index](scale_support)
             scale = scale[:, :, :y_shape[0], :y_shape[1]]           
 
-            if slice_index < self.num_slice_cumulative_list[0] or quality == 0 or quality == 1:
+            if slice_index < self.num_slice_cumulative_list[0] or quality == 0:
                 index = self.gaussian_conditional.build_indexes(scale)
                 #y_q_slice = self.gaussian_conditional.quantize(y_slice, "symbols", mu)
                 y_q_string  = self.gaussian_conditional.compress(y_slice, index,mu)
@@ -281,7 +288,7 @@ class ProgressiveWACNN(WACNN):
 
                 current_index =slice_index%self.num_slice_cumulative_list[0]
                 block_mask = self.masking(scale,slice_index = current_index, pr = quality, mask_pol = mask_pol)
-                block_mask = self.masking.apply_noise(block_mask, False)
+                #block_mask = self.masking.apply_noise(block_mask, False)
                 index = self.gaussian_conditional.build_indexes(scale*block_mask).int()
 
                 y_q_string  = self.gaussian_conditional.compress((y_slice - mu)*block_mask, index)
@@ -338,12 +345,12 @@ class ProgressiveWACNN(WACNN):
             scale = self.cc_scale_transforms[slice_index](scale_support)
             scale = scale[:, :, :y_shape[0], :y_shape[1]]
 
-            if slice_index <self.num_slice_cumulative_list[0] or quality == 0 or quality == 1 :
+            if slice_index <self.num_slice_cumulative_list[0] or quality == 0:
                 index = self.gaussian_conditional.build_indexes(scale)
             else:
                 current_index =slice_index%self.num_slice_cumulative_list[0]
                 block_mask = self.masking(scale,slice_index = current_index, pr = quality, mask_pol = mask_pol)
-                block_mask = self.masking.apply_noise(block_mask, False)
+                #block_mask = self.masking.apply_noise(block_mask, False)
                 index = self.gaussian_conditional.build_indexes(scale*block_mask)
 
                 
@@ -416,7 +423,7 @@ class ProgressiveWACNN(WACNN):
             else:
                 current_index = slice_index%self.num_slice_cumulative_list[0]
                 block_mask = self.masking(scale,slice_index = current_index, pr = quality, mask_pol = mask_pol)
-                block_mask = self.masking.apply_noise(block_mask, False)
+                #block_mask = self.masking.apply_noise(block_mask, False)
                 scale = scale*block_mask
 
                 y_prog_slice_m = y_slice  - mu
@@ -630,7 +637,7 @@ class ProgressiveMaskedWACNN(ProgressiveWACNN):
 
 
                 block_mask = self.masking(scale,slice_index = current_index, pr = q, mask_pol = mask_pol) #scale, slice_index = 0,  pr = 0, mask_pol = None
-                block_mask = self.masking.apply_noise(block_mask, training if "learnable" in mask_pol else False)
+                #block_mask = self.masking.apply_noise(block_mask, training if "learnable" in mask_pol else False)
                 #scale = scale*block_mask
 
                 y_slice_m = y_slice  - mu

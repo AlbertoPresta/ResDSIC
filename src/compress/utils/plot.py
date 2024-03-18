@@ -90,6 +90,8 @@ def plot_rate_distorsion(bpp_res, psnr_res,epoch, eest = "compression"):
     legenda = {}
     legenda["base"] = {}
     legenda["our"] = {}
+    legenda["tri_planet"] = {}
+
 
 
 
@@ -100,19 +102,22 @@ def plot_rate_distorsion(bpp_res, psnr_res,epoch, eest = "compression"):
 
     legenda["our"]["colore"] = [palette[3],'-']
     legenda["our"]["legends"] = "proposed"
-    print("la lunghezza è questa----> ",len(psnr_res["our"]))
     legenda["our"]["symbols"] = ["*"]*len(psnr_res["our"])
     legenda["our"]["markersize"] = [5]*len(psnr_res["our"])
 
+
+    legenda["tri_planet"]["colore"] = [palette[5],'-']
+    legenda["tri_planet"]["legends"] = "tri_planet"
+    legenda["tri_planet"]["symbols"] = ["*"]*27
+    legenda["tri_planet"]["markersize"] = [5]*27
     
     plt.figure(figsize=(12,8)) # fig, axes = plt.subplots(1, 1, figsize=(8, 5))
 
     list_names = list(bpp_res.keys()) #[base our]
 
-    if epoch < 5:
-        list_names = ["our"]
-    else:
-        list_names = list(bpp_res.keys())
+
+
+    list_names = list(bpp_res.keys())
 
     minimo_bpp, minimo_psnr = 10000,1000
     massimo_bpp, massimo_psnr = 0,0

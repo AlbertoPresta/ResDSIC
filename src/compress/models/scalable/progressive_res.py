@@ -51,7 +51,7 @@ class ProgressiveResWACNN(ProgressiveWACNN):
                          **kwargs)
         
 
-        assert joiner_policy in ("res","cond")
+       
         self.joiner_policy = joiner_policy 
         self.shared_entropy_estimation = shared_entropy_estimation
         

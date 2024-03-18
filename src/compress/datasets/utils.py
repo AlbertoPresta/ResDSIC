@@ -31,9 +31,9 @@ class ImageFolder(Dataset):
 
         num_images = num_images
             
-
+        print("entro qui per il dataset")
         for i,f in enumerate(splitdir.iterdir()):
-            if i%5000==0:
+            if i%50000==0:
                 print(i)
             if i <= num_images: 
                 if f.is_file() and i < num_images:

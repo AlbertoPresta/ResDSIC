@@ -22,6 +22,7 @@ from .scalable.conditional_independent import ResWACNNConditionalIndependentEntr
 from .scalable.progressive import ProgressiveWACNN,ProgressiveMaskedWACNN
 from .scalable.progressive_res import ProgressiveResWACNN
 from .scalable.CHP_res import ChannelProgresssiveWACNN
+from .scalable.progressive_enc import ProgressiveEncWACNN
 
 
 models = {
@@ -34,13 +35,16 @@ models = {
     "progressive": ProgressiveWACNN,
     "progressive_mask": ProgressiveMaskedWACNN,
     "progressive_res":ProgressiveResWACNN,
-    "channel":ChannelProgresssiveWACNN
+    "channel":ChannelProgresssiveWACNN,
+    "progressive_enc":ProgressiveEncWACNN
 }
 
 
 
 
 def get_model(args,device, lmbda_list):
+
+    print("te model is----> ",args.model)
 
 
     if  args.model == "progressive":
@@ -49,6 +53,15 @@ def get_model(args,device, lmbda_list):
                                 multiple_decoder = args.multiple_decoder,
                                 dim_chunk = args.dim_chunk,
                                 division_dimension = args.division_dimension,
+                                lmbda_list = lmbda_list
+
+                        ) 
+    elif  args.model == "progressive_enc":
+        net = models[args.model]( N = args.N,
+                                M = args.M,
+                                multiple_decoder = args.multiple_decoder,
+                                dim_chunk = args.dim_chunk,
+                                division_dimension = args.division_dimension, #dddd
                                 lmbda_list = lmbda_list
 
                         )       
@@ -72,13 +85,13 @@ def get_model(args,device, lmbda_list):
                                 lmbda_list = lmbda_list,
                                 mask_policy = args.mask_policy,
                                 joiner_policy = args.joiner_policy,
-                                support_progressive_slices =2,
+                                support_progressive_slices =args.support_progressive_slices,
                                 shared_entropy_estimation = False
                         )  
     elif args.model == "progressive_res":
         net = models[args.model]( N = args.N,
                                 M = args.M,
-                                multiple_decoder = args.multiple_decoder,
+                                multiple_decoder = args.multiple_decoder, #ddd
                                 dim_chunk = args.dim_chunk,
                                 division_dimension = args.division_dimension,
                                 lmbda_list = lmbda_list,

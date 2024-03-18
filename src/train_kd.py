@@ -12,9 +12,9 @@ import torch.optim as optim
 from   compress.training.step import train_one_epoch, valid_epoch, test_epoch, compress_with_ac
 from torch.utils.data import DataLoader
 from torchvision import transforms
-from compress.training.loss import ScalableRateDistortionLoss
+from compress.training.loss import ScalableDistilledDistortionLoss
 from compress.datasets.utils import ImageFolder, TestKodakDataset
-from compress.models import get_model
+from compress.models import get_model, models
 #from compress.zoo import models
 import os
 
@@ -111,7 +111,7 @@ def main(argv):
     test_transforms = transforms.Compose(
         [ transforms.ToTensor()]
     )
-    print("sono qua???")
+
     train_dataset = ImageFolder(args.dataset, split="train", transform=train_transforms, num_images=args.num_images)
     valid_dataset = ImageFolder(args.dataset, split="test", transform=train_transforms, num_images=args.num_images_val)
     test_dataset = TestKodakDataset(data_dir="/scratch/dataset/kodak", transform= test_transforms)
@@ -155,35 +155,13 @@ def main(argv):
     if args.cuda and torch.cuda.device_count() > 1:
         net = CustomDataParallel(net)
 
+
     last_epoch = 0
-
-    optimizer, aux_optimizer = configure_optimizers(net, args)
-    lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, "min", factor=0.3, patience=args.patience)
-    criterion = ScalableRateDistortionLoss(lmbda_list=args.lmbda_list)
-
-
-
-
-    if args.checkpoint != "none" and args.continue_training:
-        print("entro qua e continuo il training")
-        checkpoint = torch.load(args.checkpoint, map_location=device)
-        new_args = checkpoint["args"]
-        net = get_model(new_args,device, lmbda_list)
-        net.load_state_dict(checkpoint["state_dict"],strict = True) 
-        net.update() 
-        torch.save(checkpoint["state_dict"],"/scratch/_very_best_m2.pth.tar")
-        return 0
-
-        #optimizer.load_state_dict(checkpoint["optimizer"])
-        #aux_optimizer.load_state_dict(checkpoint["aux_optimizer"])
-        #lr_scheduler.load_state_dict(checkpoint["lr_scheduler"])
-        last_epoch = checkpoint["epoch"]
-
-
-    elif  args.checkpoint != "none" and args.continue_training is False:  # load from previous checkpoint
-
+    if args.checkpoint != "none":  # load from previous checkpoint
         print("Loading", args.checkpoint)
         checkpoint = torch.load(args.checkpoint, map_location=device)
+        last_epoch = 0 # checkpoint["epoch"] + 1
+        #print("madonna troai")
         for k in list(checkpoint["state_dict"]):
             if "entropy" in k or "gaussian" in k:
                 print(k)
@@ -201,11 +179,45 @@ def main(argv):
                     nuova_chave = "g_s.0"  +keys[3:]
                     checkpoint[nuova_chave] = checkpoint[keys]
 
-        #checkpoint['gaussian_conditional_prog._quantized_cdf'] = net.state_dict()['gaussian_conditional_prog._quantized_cdf']
-        net.load_state_dict(checkpoint,strict = False)
+        last_epoch = 0 # checkpoint["epoch"] + 1
+
+        net.load_state_dict(checkpoint,strict = False)  #dddd
         print("ho fatto il salvataggio!!!")#dddd
         net.update()       
         
+    optimizer, aux_optimizer = configure_optimizers(net, args)
+    lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, "min", factor=0.3, patience=args.patience)
+    
+    print("inizializzo criterion loss")
+    print("fase 1, scarico il modello preallenato")
+    model_enhance = models["cnn"]()
+    checkpoint_enh = torch.load("/scratch/base_devil/weights/q6/model.pth", map_location=device)
+
+    model_base = models["cnn"]()
+    checkpoint_base = torch.load("/scratch/base_devil/weights/q1/model.pth", map_location=device)
+
+
+    model_enhance.load_state_dict(state_dict = checkpoint_enh, strict=True)
+    model_enhance.update()
+
+    model_base.load_state_dict(state_dict = checkpoint_enh, strict=True)
+    model_base.update()
+
+    encoder_enhanced = model_enhance.g_a
+    encoder_base = model_base.g_a
+    
+    criterion = ScalableDistilledDistortionLoss(encoder_enhanced= encoder_enhanced,
+                                                encoder_base=encoder_base,
+                                                lmbda_list=args.lmbda_list)
+
+
+    if args.checkpoint != "none" and args.continue_training:    
+        print("conitnuo il training!")
+        optimizer.load_state_dict(checkpoint["optimizer"])
+        #aux_optimizer.load_state_dict(checkpoint["aux_optimizer"])
+        lr_scheduler.load_state_dict(checkpoint["lr_scheduler"])
+
+    
 
 
     if args.only_progressive:
@@ -375,8 +387,8 @@ def main(argv):
                     "optimizer": optimizer.state_dict(),
                     "lr_scheduler": lr_scheduler.state_dict(),
                     "aux_optimizer":aux_optimizer if aux_optimizer is not None else "None",
-                    "args":args
-      
+                    "args":args,
+                    "epoch":epoch
                 },
                 is_best,
                 last_pth,

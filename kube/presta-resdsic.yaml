@@ -1,21 +1,21 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: ece-wcsng-resic-dsic
+  name: scalable-dsic
   namespace: ece-wcsng-xd
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: ece-wcsng-resic-dsic
+      app: scalable-dsic
   template:
     metadata:
       labels:
-        app: ece-wcsng-resic-dsic
+        app: scalable-dsic
     spec:
-      hostname: ece-wcsng-resic-dsic
+      hostname: scalable-dsic
       containers:
-      - name: ece-wcsng-resic-dsic
+      - name: scalable-dsic
         image: docker.io/albipresta23/pccompress  #docker.io/zppppppx/pvt-ssd:v6  #gitlab-registry.nrp-nautilus.io/wcsng/wcsng_3dcv_desktop:latest
         env:
         - name: TZ

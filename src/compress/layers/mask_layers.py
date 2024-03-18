@@ -48,18 +48,18 @@ class Mask(nn.Module):
 
 
         if mask_pol == "point-based-std":
-            if pr == self.scalable_levels - 1:
+            if pr == 10:# self.scalable_levels - 1:
                 return torch.ones_like(scale).to(scale.device)
             elif pr == 0.0:
                 return torch.zeros_like(scale).to(scale.device)
             
 
             assert scale is not None 
-            if pr > 1:
-                pr = pr*0.1
+
+            pr = pr*0.1
             pr_bis = 1.0 - pr
             scale = scale.ravel()
-            quantile = torch.quantile(scale, pr_bis)
+            quantile = torch.quantile(scale, pr_bis) #dddd
             res = scale >= quantile 
             res = res.float()
 
@@ -217,6 +217,14 @@ class ChannelMask(nn.Module):
             res = scale >= quantile 
             #print("dovrebbero essere soli 1: ",torch.unique(res, return_counts = True))
             return res.reshape(bs,ch,w,h).to(torch.float).to(scale.device)
+
+        elif mask_pol == "two-levels":
+            if pr == 0:
+                return torch.zeros_like(scale).to(scale.device)
+            else:
+                return torch.ones_like(scale).to(scale.device)
+        
+
 
         elif mask_pol == "learnable-mask-gamma":
 

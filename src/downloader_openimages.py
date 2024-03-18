@@ -11,7 +11,7 @@ if __name__ == '__main__':
         dataset_dir='openimages',
     )
     dataset_test = fiftyone.zoo.load_zoo_dataset(
-        "open-images-v6",
+        "open-images-v6", #ddd
         split="test",
         max_samples=10000,
         label_types=["classifications"],

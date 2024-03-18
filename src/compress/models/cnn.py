@@ -195,6 +195,7 @@ class WACNN(CompressionModel):
 
     def load_state_dict(self, state_dict, strict = False):
         
+        print("Modificato")
         update_registered_buffers(
             self.gaussian_conditional,
             "gaussian_conditional",
@@ -207,6 +208,7 @@ class WACNN(CompressionModel):
             ["_quantized_cdf", "_offset", "_cdf_length"],
             state_dict,
         )
+        
         super().load_state_dict(state_dict, strict = strict)
 
     @classmethod

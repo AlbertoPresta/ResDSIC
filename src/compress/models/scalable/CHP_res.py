@@ -36,8 +36,9 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
                 mask_policy = None,
                 lmbda_list = [0.075],
                 shared_entropy_estimation = False,
-                joiner_policy = "res",
-                support_progressive_slices = 5,
+                joiner_policy = "channel_cond",
+
+                support_progressive_slices = 0,
                 **kwargs):
         
         super().__init__(N = N, 
@@ -49,6 +50,7 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
                          division_dimension=division_dimension,
                          shared_entropy_estimation=shared_entropy_estimation,
                          joiner_policy=joiner_policy,
+
                          **kwargs)
         
 
@@ -114,6 +116,7 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
         
         estremo_indice = self.support_progressive_slices + 1
         delta_dim = self.division_dimension[1] -self.division_dimension[0]
+        print(" delta dimension is: ",delta_dim)
         self.cc_mean_transforms_prog = nn.ModuleList(
                     nn.Sequential(
                         conv(delta_dim + 32*min(i + 1, estremo_indice), 224, stride=1, kernel_size=3),
@@ -172,7 +175,7 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
                 ) for _ in range(2) # per adesso solo due, poi vediamo
             )
         else:
-
+            
             self.g_s = nn.Sequential(
                 Win_noShift_Attention(dim=self.dimensions_M[0], num_heads=8, window_size=4, shift_size=2),
                 deconv(self.dimensions_M[0], N, kernel_size=5, stride=2),
@@ -242,14 +245,17 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
         if current_index == 0 or self.support_progressive_slices == 0:
             return [bi]
         sup_ind = min(self.support_progressive_slices,current_index)
-        psi_cum = y_hat_quality[:sup_ind]
+        psi_cum = y_hat_quality[current_index - sup_ind:current_index]
         return [bi] + psi_cum
 
-    def merge(self,y_base,y_enhanced):
+    def merge(self,y_base,y_enhanced,slice_index):
         if self.joiner_policy == "res":
             return y_base + y_enhanced 
+        elif self.joiner_policy == "conc":
+            return torch.cat([y_base,y_enhanced],dim = 1)
         else: 
-            return self.joiner(y_base,y_enhanced)
+            c = torch.cat([y_base,y_enhanced],dim = 1)
+            return self.joiner[slice_index](c)
 
     def forward(self,x, quality = None, mask_pol = None, training = True):
     
@@ -330,6 +336,9 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
 
         y_likelihood_total = []
 
+        y_hat_total = []
+        y_hat_total.append(y_hat_b)
+
         for _,q in enumerate(list_quality[1:]):
             y_likelihood_quality = []
             y_likelihood_quality = y_likelihood_quality +  y_likelihood_base
@@ -379,7 +388,7 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
                 y_hat_slice += lrp   
 
                 # faccio il merge qua!!!!!
-                y_hat_slice = self.merge(y_hat_slice,y_hat_slices_base[current_index])
+                y_hat_slice = self.merge(y_hat_slice,y_hat_slices_base[current_index],current_index)
  
                 y_hat_slices_quality.append(y_hat_slice)
                 #y_hat_slices_only_quality.append(y_hat_slice)
@@ -389,12 +398,14 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
             if self.multiple_decoder:
                 x_hat_current = self.g_s[1](y_hat_enhanced)
             else: 
-                y_hat_enhanced = self.g_s_prog(y_hat_enhanced)
+                #y_hat_enhanced = self.g_s_prog(y_hat_enhanced)
                 x_hat_current = self.g_s(y_hat_enhanced)
 
             y_likelihood_single_quality = torch.cat(y_likelihood_quality,dim = 1)
             y_likelihood_total.append(y_likelihood_single_quality.unsqueeze(0))
             x_hat_progressive.append(x_hat_current.unsqueeze(0)) #1,2,256,256
+
+            y_hat_total.append(y_hat_enhanced)
         
 
         if len(y_likelihood_total)==0:
@@ -409,7 +420,8 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
         return {
             "x_hat": x_hats,
             "likelihoods": {"y": y_likelihoods_b,"y_prog":y_likelihood_total,"z": z_likelihoods},
-            "z_hat":z_hat 
+            "z_hat":z_hat,
+            "y_hat":y_hat_total
         }
     
 
@@ -504,7 +516,7 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
             lrp = 0.5 * torch.tanh(lrp)
             y_hat_slice += lrp
 
-            y_hat_slice = self.merge(y_hat_slice,y_hat_slices[current_index])
+            y_hat_slice = self.merge(y_hat_slice,y_hat_slices[current_index],current_index)
 
             y_hat_slices_quality.append(y_hat_slice)
 
@@ -589,7 +601,7 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
             lrp = 0.5 * torch.tanh(lrp)
             y_hat_slice += lrp
 
-            y_hat_slice = self.merge(y_hat_slice,y_hat_slices[current_index])
+            y_hat_slice = self.merge(y_hat_slice,y_hat_slices[current_index],current_index)
             y_hat_slices_quality.append(y_hat_slice)
 
 
@@ -597,8 +609,8 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
         if self.multiple_decoder:
             x_hat = self.g_s[1](y_hat_en).clamp_(0, 1)
         else:
-            y_hat_t = self.g_s_prog(y_hat_en)
-            x_hat = self.g_s(y_hat_t).clamp_(0, 1) 
+            #y_hat_t = self.g_s_prog(y_hat_en)
+            x_hat = self.g_s(y_hat_en).clamp_(0, 1) 
         return {"x_hat": x_hat}   
 
 
@@ -706,7 +718,7 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
             y_hat_slice += lrp   
 
             # faccio il merge qua!!!!!
-            y_hat_slice = self.merge(y_hat_slice,y_hat_slices[current_index])   #ddd
+            y_hat_slice = self.merge(y_hat_slice,y_hat_slices[current_index],current_index)   #ddd
 
             y_hat_slices_quality.append(y_hat_slice)    
 
@@ -718,8 +730,8 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
         if self.multiple_decoder:
             x_hat = self.g_s[1](y_hat).clamp_(0, 1)
         else:
-            y_hat_t = self.g_s_prog(y_hat)
-            x_hat = self.g_s(y_hat_t).clamp_(0, 1) 
+            #y_hat_t = self.g_s_prog(y_hat)
+            x_hat = self.g_s(y_hat).clamp_(0, 1) 
 
 
         return {
