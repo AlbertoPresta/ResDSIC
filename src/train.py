@@ -171,8 +171,8 @@ def main(argv):
         net = get_model(new_args,device, lmbda_list)
         net.load_state_dict(checkpoint["state_dict"],strict = True) 
         net.update() 
-        torch.save(checkpoint["state_dict"],"/scratch/_very_best_m2.pth.tar")
-        return 0
+        #torch.save(checkpoint["state_dict"],"/scratch/_very_best_m2.pth.tar")
+
 
         #optimizer.load_state_dict(checkpoint["optimizer"])
         #aux_optimizer.load_state_dict(checkpoint["aux_optimizer"])
