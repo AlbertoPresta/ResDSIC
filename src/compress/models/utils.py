@@ -130,3 +130,16 @@ def deconv(in_channels, out_channels, kernel_size=5, stride=2):     # SN -1 + k 
         output_padding=stride - 1,
         padding=kernel_size // 2,
     )
+
+
+
+def extract_random_mask(block,percentage):
+
+    shape = block.shape
+    total_elements = torch.prod(torch.tensor(shape)).item()
+    num_ones = int(total_elements * (percentage / 100.0))
+    tensor = torch.zeros(shape).to(block.device)
+    indices = torch.randperm(total_elements)[:num_ones]
+    # Impostiamo gli elementi selezionati su 1
+    tensor.view(-1)[indices] = 1
+    return tensor

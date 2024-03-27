@@ -579,7 +579,6 @@ class GaussianConditional(EntropyModel):
     def _standardized_cumulative(self, inputs: Tensor) -> Tensor:
         half = float(0.5)
         const = float(-(2 ** -0.5))
-        # Using the complementary error function maximizes numerical precision.
         return half * torch.erfc(const * inputs)
 
     @staticmethod
@@ -624,9 +623,7 @@ class GaussianConditional(EntropyModel):
         self._offset = -pmf_center
         self._cdf_length = pmf_length + 2
 
-    def _likelihood(
-        self, inputs: Tensor, scales: Tensor, means: Optional[Tensor] = None
-    ) -> Tensor:
+    def _likelihood(self, inputs: Tensor, scales: Tensor, means: Optional[Tensor] = None) -> Tensor:
         half = float(0.5)
 
         if means is not None:

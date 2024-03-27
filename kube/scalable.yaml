@@ -1,21 +1,21 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: ece-wcsng-alberto-bis
+  name: ece-scalable
   namespace: ece-wcsng-xd
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: ece-wcsng-alberto-bis
+      app: ece-scalable
   template:
     metadata:
       labels:
-        app: ece-wcsng-alberto-bis
+        app: ece-scalable
     spec:
-      hostname: ece-wcsng-alberto-bis
+      hostname: ece-scalable
       containers:
-      - name: ece-wcsng-alberto-bis
+      - name: ece-scalable
         image: docker.io/albipresta23/pccompress  #docker.io/zppppppx/pvt-ssd:v6  #gitlab-registry.nrp-nautilus.io/wcsng/wcsng_3dcv_desktop:latest
         env:
         - name: TZ
@@ -67,11 +67,11 @@ spec:
         resources:
           limits:
             memory: 64Gi
-            cpu: "64"
+            cpu: "32"
             nvidia.com/gpu: "1"
           requests:
             memory: 64Gi
-            cpu: "64"
+            cpu: "32"
             nvidia.com/gpu: "1"
         volumeMounts:
         - mountPath: /dev/shm

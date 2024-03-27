@@ -80,6 +80,7 @@ def get_model(args,device, lmbda_list):
         net = models[args.model]( N = args.N,
                                 M = args.M,
                                 multiple_decoder = args.multiple_decoder,
+                                multiple_encoder = args.multiple_encoder,
                                 dim_chunk = args.dim_chunk,
                                 division_dimension = args.division_dimension,
                                 lmbda_list = lmbda_list,

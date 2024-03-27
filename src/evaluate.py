@@ -10,24 +10,14 @@ from compress.datasets.utils import  TestKodakDataset
 from compress.models import get_model
 from compress.utils.plot import plot_rate_distorsion
 import numpy as np
-
 import seaborn as sns
-# Imposta la palette "tab10" di Seaborn
+
 palette = sns.color_palette("tab10")
-#plt.rc('text', usetex=True)
-#plt.rc('font', family='Times New Roman')
 
 
 torch.backends.cudnn.deterministic=True
 torch.backends.cudnn.benchmark=False
 
-
-
-
-def from_state_dict(cls, state_dict):
-    net = cls()#cls(192, 320)
-    net.load_state_dict(state_dict)
-    return net
 
 
 
@@ -44,10 +34,12 @@ def main(argv):
 
     print("Loading", args.checkpoint)
     checkpoint = torch.load(args.checkpoint, map_location=device)
-    print("zio caro---> ",checkpoint.keys())
     new_args = checkpoint["args"]
-    lmbda_list = new_args.lmbda_list
 
+    if "multiple_encoder" not in new_args:
+        new_args.multiple_encoder = False
+
+    lmbda_list = new_args.lmbda_list
     wandb.init( config= new_args, project="EVAL", entity="albipresta")   
     if new_args.seed is not None:
         torch.manual_seed(args.seed)
@@ -61,14 +53,9 @@ def main(argv):
 
     filelist = test_dataset.image_path
 
-    
-
-
-
-
 
     net = get_model(new_args,device, lmbda_list)
-    #net.update() 
+
     net.load_state_dict(checkpoint["state_dict"],strict = True) #dddfff
     net.update() 
     if new_args.model in ("progressive","progressive_enc","progressive_res","progressive_maks","progressive_res","channel"):

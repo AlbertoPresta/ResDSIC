@@ -33,10 +33,11 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
                 division_dimension = [320,416],
                 dim_chunk = 32,
                 multiple_decoder = True,
+                multiple_encoder = False,
                 mask_policy = None,
                 lmbda_list = [0.075],
                 shared_entropy_estimation = False,
-                joiner_policy = "channel_cond",
+                joiner_policy = "res",
 
                 support_progressive_slices = 0,
                 **kwargs):
@@ -57,7 +58,32 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
         assert joiner_policy in ("res","cond","channel_cond","channel_res")
         self.support_progressive_slices = support_progressive_slices
         self.shared_entropy_estimation = shared_entropy_estimation
+        self.multiple_encoder = multiple_encoder
         assert self.shared_entropy_estimation is False 
+
+        if self.multiple_encoder:
+            self.g_a = nn.Sequential(
+                conv(3, N, kernel_size=5, stride=2), # halve 128
+                    GDN(N),
+                    conv(N, N, kernel_size=5, stride=2), # halve 64
+                    GDN(N),
+                    Win_noShift_Attention(dim=N, num_heads=8, window_size=8, shift_size=4), # 
+                    conv(N, N, kernel_size=5, stride=2), #32 
+                    GDN(N),
+                    conv(N, self.dimensions_M[0], kernel_size=5, stride=2), # 16
+                    Win_noShift_Attention(dim=self.dimensions_M[0], num_heads=8, window_size=4, shift_size=2),
+                ) 
+            self.g_a_enh = nn.Sequential(
+                conv(3, N, kernel_size=5, stride=2), # halve 128
+                GDN(N),
+                conv(N, N, kernel_size=5, stride=2), # halve 64
+                GDN(N),
+                Win_noShift_Attention(dim=N, num_heads=8, window_size=8, shift_size=4), # 
+                conv(N, N, kernel_size=5, stride=2), #32 
+                GDN(N),
+                conv(N, self.dimensions_M[0], kernel_size=5, stride=2), # 16
+                Win_noShift_Attention(dim=self.dimensions_M[0], num_heads=8, window_size=4, shift_size=2),
+            )
         
 
         if self.joiner_policy == "channel_cond":
@@ -116,7 +142,6 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
         
         estremo_indice = self.support_progressive_slices + 1
         delta_dim = self.division_dimension[1] -self.division_dimension[0]
-        print(" delta dimension is: ",delta_dim)
         self.cc_mean_transforms_prog = nn.ModuleList(
                     nn.Sequential(
                         conv(delta_dim + 32*min(i + 1, estremo_indice), 224, stride=1, kernel_size=3),
@@ -192,19 +217,30 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
         self.scalable_levels = len(self.lmbda_list)
         self.masking = ChannelMask(self.mask_policy, self.scalable_levels,self.dim_chunk,num_levels =self.num_slices_list[1] )
         self.quality_list = [i for i in range(self.scalable_levels)]
-        print("lis quality: ",self.quality_list)
+
         self.ns0 = self.num_slice_cumulative_list[0] 
         self.ns1 = self.num_slice_cumulative_list[1] 
 
             
     def print_information(self):
-        print(" g_a: ",sum(p.numel() for p in self.g_a.parameters()))
+        if self.multiple_encoder is False:
+            print(" g_a: ",sum(p.numel() for p in self.g_a.parameters()))
+        else:
+            print(" g_a: ",sum(p.numel() for p in self.g_a.parameters()))
+            print(" g_a_enh: ",sum(p.numel() for p in self.g_a_enh.parameters()))
         print(" h_a: ",sum(p.numel() for p in self.h_a.parameters()))
         print(" h_means_a: ",sum(p.numel() for p in self.h_mean_s.parameters()))
         print(" h_scale_a: ",sum(p.numel() for p in self.h_scale_s.parameters()))
         print("cc_mean_transforms",sum(p.numel() for p in self.cc_mean_transforms.parameters()))
         print("cc_scale_transforms",sum(p.numel() for p in self.cc_scale_transforms.parameters()))
 
+
+        if self.mask_policy == "single-learnable-mask-quantile":
+            print("mask",sum(p.numel() for p in self.masking.mask_conv.parameters()))
+        if "gamma" in self.mask_policy:
+            print("mask",sum(p.numel() for p in self.masking.mask_conv.parameters()))
+            for i in range(len(self.masking.gamma)):
+                print("gamma " + str(i),sum(p.numel() for p in self.masking.gamma[i]))
 
         if self.shared_entropy_estimation is False: 
             print("cc_mean_transforms_prog",sum(p.numel() for p in self.cc_mean_transforms_prog.parameters()))
@@ -236,7 +272,7 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
         elif isinstance(quality,list):
             list_quality = quality 
         else:
-            list_quality = [quality] 
+            list_quality = [0, quality] 
         return list_quality
 
 
@@ -257,13 +293,41 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
             c = torch.cat([y_base,y_enhanced],dim = 1)
             return self.joiner[slice_index](c)
 
+
+    def only_mask(self):
+
+        for p in self.parameters():
+            p.requires_grad = False 
+        for _,p in self.named_parameters():
+            p.requires_grad = False 
+        
+        for p in self.masking.mask_conv.parameters():
+            p.requires_grad = True
+        for n,p in self.masking.mask_conv.named_parameters():
+            p.requires_grad = True
+        
+
+        if "gamma" in self.mask_policy:
+            print("entro qua per gamma")
+            for i in range(len(self.masking.gamma)): #ddd
+                self.masking.gamma[i].requires_grad_(True)
+
+                        
+
+
+    
     def forward(self,x, quality = None, mask_pol = None, training = True):
     
         if mask_pol is None:
             mask_pol = self.mask_policy
         list_quality = self.define_quality(quality)  
-
-        y = self.g_a(x)
+        
+        if self.multiple_encoder is False:
+            y = self.g_a(x)
+        else:
+            y_base = self.g_a(x)
+            y_enh = self.g_a_enh(x)
+            y = torch.cat([y_base,y_enh],dim = 1).to(x.device)
         y_shape = y.shape[2:]
         z = self.h_a(y)
         _, z_likelihoods = self.entropy_bottleneck(z)
@@ -295,12 +359,6 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
             support_slices = (y_hat_slices_base if self.max_support_slices < 0 \
                                                         else y_hat_slices_base[:indice])               
             
-            #print("base: ",slice_index," ",idx," ",indice," ",latent_means.shape,"  ",\
-            #      latent_means[:,:self.dimensions_M[0]].shape," ",len(support_slices))
-            
-            
-            
-            
             mean_support = torch.cat([latent_means[:,:self.dimensions_M[0]]] + support_slices, dim=1)
             scale_support = torch.cat([latent_scales[:,:self.dimensions_M[0]]] + support_slices, dim=1) 
 
@@ -311,7 +369,10 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
             scale = self.cc_scale_transforms[idx](scale_support)#self.extract_scale(idx,slice_index,scale_support)
             scale = scale[:, :, :y_shape[0], :y_shape[1]]
 
-            _, y_slice_likelihood = self.gaussian_conditional(y_slice, scale, mu, training = training)
+            _, y_slice_likelihood = self.gaussian_conditional(y_slice,
+                                                            scale, 
+                                                            mu, 
+                                                            training = training)
             y_hat_slice = ste_round(y_slice - mu) + mu
 
 
@@ -343,24 +404,15 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
             y_likelihood_quality = []
             y_likelihood_quality = y_likelihood_quality +  y_likelihood_base
             y_hat_slices_quality = [] 
-            #y_hat_slices_only_quality = []
-            #y_hat_slices_quality =  y_hat_slices_quality + y_hat_slices_base
-
-            #print("**********************quality: ",q," ",len(y_hat_slices_quality)," ",\
-            #type(y_hat_slices_base)," ",type(y_hat_slices_quality))
 
             for slice_index in range(self.ns0,self.ns1):
-
-
                 y_slice = y_slices[slice_index]
                 current_index = slice_index%self.ns0
                 support_slices = self.determine_support(y_hat_slices_base,
                                                          current_index,
-                                                         y_hat_slices_quality) 
+                                                         y_hat_slices_quality) #dddd
                 
-                #print("slice_index: ",slice_index,": ",len(support_slices)," ",current_index)
-                
-           
+
                 mean_support = torch.cat([latent_means[:,self.dimensions_M[0]:]] + support_slices, dim=1)
                 scale_support = torch.cat([latent_scales[:,self.dimensions_M[0]:]] + support_slices, dim=1) 
 
@@ -372,7 +424,10 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
                 scale = scale[:, :, :y_shape[0], :y_shape[1]]
 
 
-                block_mask = self.masking(scale,slice_index = current_index, pr = q, mask_pol = mask_pol) #scale, slice_index = 0,  pr = 0, mask_pol = None
+                block_mask = self.masking(scale,
+                                        slice_index = current_index,
+                                        pr = q, 
+                                        mask_pol = mask_pol) 
                 block_mask = self.masking.apply_noise(block_mask, training if "learnable" in mask_pol else False)
 
 
@@ -381,6 +436,7 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
 
                 _, y_slice_likelihood = self.gaussian_conditional(y_slice_m, scale*block_mask, training = training)
                 y_hat_slice = ste_round(y_slice - mu)*block_mask + mu
+
 
                 lrp_support = torch.cat([mean_support,y_hat_slice], dim=1)
                 lrp = self.lrp_transforms_prog[current_index](lrp_support)
@@ -394,12 +450,14 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
                 #y_hat_slices_only_quality.append(y_hat_slice)
                 y_likelihood_quality.append(y_slice_likelihood)
 
+            
             y_hat_enhanced = torch.cat(y_hat_slices_quality,dim = 1) 
             if self.multiple_decoder:
                 x_hat_current = self.g_s[1](y_hat_enhanced)
             else: 
                 #y_hat_enhanced = self.g_s_prog(y_hat_enhanced)
                 x_hat_current = self.g_s(y_hat_enhanced)
+
 
             y_likelihood_single_quality = torch.cat(y_likelihood_quality,dim = 1)
             y_likelihood_total.append(y_likelihood_single_quality.unsqueeze(0))
@@ -430,7 +488,12 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
 
         mask_pol = self.mask_policy if mask_pol is None else mask_pol
 
-        y = self.g_a(x)
+        if self.multiple_encoder is False:
+            y = self.g_a(x)
+        else:
+            y_base = self.g_a(x)
+            y_enh = self.g_a_enh(x)
+            y = torch.cat([y_base,y_enh],dim = 1).to(x.device)
         y_shape = y.shape[2:]
 
         z = self.h_a(y)
@@ -445,6 +508,7 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
         y_slices = y.chunk(self.num_slices, 1) # total amount of slices
 
         y_strings = []
+        masks = []
 
 
         for slice_index in range(self.ns0):
@@ -479,7 +543,7 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
             y_hat_slices.append(y_hat_slice)
 
         if quality == 0:
-            return {"strings": [y_strings, z_strings],"shape":z.size()[-2:]}
+            return {"strings": [y_strings, z_strings],"shape":z.size()[-2:], "masks":masks}
         
         y_hat_slices_quality = []
         #y_hat_slices_quality = y_hat_slices + []
@@ -499,7 +563,11 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
             scale = self.cc_scale_transforms_prog[current_index](scale_support)#self.extract_scale(idx,slice_index,scale_support)
             scale = scale[:, :, :y_shape[0], :y_shape[1]]
 
-            block_mask = self.masking(scale,slice_index = current_index, pr = quality, mask_pol = mask_pol)
+            block_mask = self.masking(scale,
+                                    slice_index = current_index, 
+                                    pr = quality,
+                                    mask_pol = mask_pol)
+            masks.append(block_mask)
             block_mask = self.masking.apply_noise(block_mask, False)
             index = self.gaussian_conditional.build_indexes(scale*block_mask).int()
 
@@ -520,9 +588,9 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
 
             y_hat_slices_quality.append(y_hat_slice)
 
-        return {"strings": [y_strings, z_strings],"shape":z.size()[-2:]}
+        return {"strings": [y_strings, z_strings],"shape":z.size()[-2:],"masks":masks}
 
-    def decompress(self, strings, shape, quality, mask_pol = None):
+    def decompress(self, strings, shape, quality, mask_pol = None, masks = None):
 
 
         mask_pol = self.mask_policy if mask_pol is None else mask_pol
@@ -551,10 +619,9 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
             scale = scale[:, :, :y_shape[0], :y_shape[1]]
 
             index = self.gaussian_conditional.build_indexes(scale)
-            #else:
-            #    block_mask = self.extract_mask(scale, pr = quality)
-            #    index = self.gaussian_conditional.build_indexes(scale*block_mask) 
-            rv = self.gaussian_conditional.decompress(pr_strings, index)
+
+
+            rv = self.gaussian_conditional.decompress(pr_strings, index )
             rv = rv.reshape(mu.shape)
             y_hat_slice = self.gaussian_conditional.dequantize(rv, mu)
 
@@ -588,8 +655,15 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
             mu = mu[:, :, :y_shape[0], :y_shape[1]]  
             scale = scale[:, :, :y_shape[0], :y_shape[1]]
 
-            block_mask = self.masking(scale,slice_index = current_index, pr = quality, mask_pol = mask_pol)
-            block_mask = self.masking.apply_noise(block_mask, False)
+            if mask_pol != "random":
+                block_mask = self.masking(scale,
+                                          slice_index = current_index, 
+                                          pr = quality, 
+                                          mask_pol = mask_pol)
+                block_mask = self.masking.apply_noise(block_mask, False)
+            else: 
+                assert masks is not None 
+                block_mask = masks[current_index]
 
             index = self.gaussian_conditional.build_indexes(scale*block_mask)
             rv = self.gaussian_conditional.decompress(pr_strings, index)
@@ -609,7 +683,6 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
         if self.multiple_decoder:
             x_hat = self.g_s[1](y_hat_en).clamp_(0, 1)
         else:
-            #y_hat_t = self.g_s_prog(y_hat_en)
             x_hat = self.g_s(y_hat_en).clamp_(0, 1) 
         return {"x_hat": x_hat}   
 
@@ -621,7 +694,12 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
 
         mask_pol = self.mask_policy if mask_pol is None else mask_pol
 
-        y = self.g_a(x)
+        if self.multiple_encoder is False:
+            y = self.g_a(x)
+        else:
+            y_base = self.g_a(x)
+            y_enh = self.g_a_enh(x)
+            y = torch.cat([y_base,y_enh],dim = 1).to(x.device) #dddd
         y_shape = y.shape[2:]
         z = self.h_a(y)
         _, z_likelihoods = self.entropy_bottleneck(z) #ddd

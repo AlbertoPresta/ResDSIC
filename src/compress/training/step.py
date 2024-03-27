@@ -25,6 +25,7 @@ def train_one_epoch(model,
                       epoch, 
                       counter,
                       sampling_training = False,
+                      list_quality = None,
                       clip_max_norm = 1.0):
     model.train()
     device = next(model.parameters()).device
@@ -45,7 +46,8 @@ def train_one_epoch(model,
         d = d.to(device)
 
         optimizer.zero_grad()
-        aux_optimizer.zero_grad()
+        if aux_optimizer is not None:
+            aux_optimizer.zero_grad()
 
         if sampling_training:
 
@@ -54,7 +56,8 @@ def train_one_epoch(model,
             out_net = model(d, quality = quality)
             out_criterion = criterion(out_net, d, lmbda = lmbda)
         else:
-            out_net = model(d)
+            
+            out_net = model(d, quality = list_quality)
             out_criterion = criterion(out_net, d)
 
 
@@ -62,10 +65,10 @@ def train_one_epoch(model,
 
         out_criterion["loss"].backward()
 
-
-        aux_loss = model.aux_loss()
-        aux_loss.backward()
-        aux_optimizer.step()
+        if aux_optimizer is not None:
+            aux_loss = model.aux_loss()
+            aux_loss.backward()
+            aux_optimizer.step()
 
 
         if clip_max_norm > 0:
@@ -121,7 +124,7 @@ def train_one_epoch(model,
                 f'\tLoss: {out_criterion["loss"].item():.3f} |'
                 f'\tMSE loss: {out_criterion["mse_loss"].mean().item() * 255 ** 2 / 3:.3f} |'
                 f'\tBpp loss: {out_criterion["bpp_loss"].item():.2f} |'
-                f"\tAux loss: {aux_loss.item():.2f}"
+               f"\tAux loss: {0.000:.2f}"
             )
     
     log_dict = {
@@ -157,7 +160,7 @@ def criterion_test(output,target):
     
 
 
-def valid_epoch(epoch, test_dataloader,criterion, model, pr_list = [0.05, 0.04, 0.03,0.02,0.01], mask_pol = None, progressive = False,lmbda_list = [0.006,0.06]):
+def valid_epoch(epoch, test_dataloader,criterion, model, pr_list = [0.05], mask_pol = None, progressive = False):
     #pr_list =  [0] +  pr_list  + [-1]
     model.eval()
     device = next(model.parameters()).device
@@ -197,8 +200,13 @@ def valid_epoch(epoch, test_dataloader,criterion, model, pr_list = [0.05, 0.04, 
 
                     mse_lss.update(mse_loss(d, out_net["x_hat"]))
                     psnr.update(psnr_im) 
-                    out_net = model(d)
-                    out_criterion = criterion(out_net, d, lmbda = p)
+                    #out_net = model(d)
+                    if mask_pol == "single-learnable-mask-quantile":
+                        out_net = model(d, quality =pr_list)
+                        out_criterion = criterion(out_net, d)
+                    else:
+                        #out_net = model(d)
+                        out_criterion = criterion(out_net, d, lmbda = p) #dddddd
 
                     loss.update(out_criterion["loss"].clone().detach())               
 
@@ -217,7 +225,7 @@ def valid_epoch(epoch, test_dataloader,criterion, model, pr_list = [0.05, 0.04, 
     return loss.avg
 
 
-def test_epoch(epoch, test_dataloader,criterion, model, pr_list = [0, 0.1,0.2,0.3,0.5,0.7,1], mask_pol = None, progressive = False):
+def test_epoch(epoch, test_dataloader,criterion, model, pr_list, mask_pol = None, progressive = False):
     model.eval()
     device = next(model.parameters()).device
 
@@ -304,7 +312,7 @@ def compress_with_ac(model,  filelist, device, epoch, pr_list = [0.05,0.04,0.03,
                 name = "level_" + str(j)
 
                 data =  model.compress(x_padded, quality =p, mask_pol = mask_pol )
-                out_dec = model.decompress(data["strings"], data["shape"], quality = p, mask_pol = mask_pol)
+                out_dec = model.decompress(data["strings"], data["shape"], quality = p, mask_pol = mask_pol, masks = data["masks"])
 
                 out_dec["x_hat"] = F.pad(out_dec["x_hat"], unpad)
                 out_dec["x_hat"].clamp_(0.,1.)     

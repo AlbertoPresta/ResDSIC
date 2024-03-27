@@ -111,14 +111,14 @@ def main(argv):
     test_transforms = transforms.Compose(
         [ transforms.ToTensor()]
     )
-    print("sono qua???")
+
     train_dataset = ImageFolder(args.dataset, split="train", transform=train_transforms, num_images=args.num_images)
     valid_dataset = ImageFolder(args.dataset, split="test", transform=train_transforms, num_images=args.num_images_val)
     test_dataset = TestKodakDataset(data_dir="/scratch/dataset/kodak", transform= test_transforms)
 
     filelist = test_dataset.image_path
 
-    device = "cuda" #if args.cuda and torch.cuda.is_available() else "cpu"
+    device = "cuda" 
 
     train_dataloader = DataLoader(
         train_dataset,
@@ -171,12 +171,6 @@ def main(argv):
         net = get_model(new_args,device, lmbda_list)
         net.load_state_dict(checkpoint["state_dict"],strict = True) 
         net.update() 
-        #torch.save(checkpoint["state_dict"],"/scratch/_very_best_m2.pth.tar")
-
-
-        #optimizer.load_state_dict(checkpoint["optimizer"])
-        #aux_optimizer.load_state_dict(checkpoint["aux_optimizer"])
-        #lr_scheduler.load_state_dict(checkpoint["lr_scheduler"])
         last_epoch = checkpoint["epoch"]
 
 
@@ -253,7 +247,7 @@ def main(argv):
                                       sampling_training = args.sampling_training)
             
         print("finito il train della epoca")
-        loss = valid_epoch(epoch, valid_dataloader,criterion, net, pr_list = [0,1],lmbda_list = args.lmbda_list, progressive=progressive)
+        loss = valid_epoch(epoch, valid_dataloader,criterion, net, pr_list = [0,1], progressive=progressive)
         print("finito il valid della epoca")
 
         lr_scheduler.step(loss)
@@ -351,8 +345,10 @@ def main(argv):
             stringa_lambda = stringa_lambda  + "_" + str(lamb)
 
 
-        name_folder = check + "_" + "_multi_" + stringa_lambda + "_" + args.model + "_" + str(args.division_dimension) + "_" + \
-             str(args.support_progressive_slices) + "_" + args.mask_policy +  "_" +    str(args.lrp_prog) + str(args.joiner_policy) + "_" + str(args.sampling_training)
+        name_folder = check + "_" + "_multi_" + stringa_lambda + "_"\
+              + args.model + "_" + str(args.division_dimension) + "_" + \
+             str(args.support_progressive_slices) + "_" + args.mask_policy +  "_" +    str(args.lrp_prog) + str(args.joiner_policy) + \
+            "_" + str(args.multiple_encoder) + "_" + str(args.multiple_decoder)
         cartella = os.path.join(args.save_path,name_folder)
 
 
