@@ -319,7 +319,8 @@ class TCM(CompressionModel):
         super().__init__(**kwargs)
 
         self.dim_chunk = dim_chunk
-        self.entropy_bottleneck = EntropyBottleneck(self.N)
+        self.N = N
+        self.entropy_bottleneck = EntropyBottleneck(192)
         self.gaussian_conditional = GaussianConditional(None)
 
         self.config = config
@@ -363,13 +364,13 @@ class TCM(CompressionModel):
                       [conv3x3(2*self.N, 192, stride=2)]
 
         self.h_a = nn.Sequential(
-            *[ResidualBlockWithStride(320, 2*self.N, 2)] + \
+            *[ResidualBlockWithStride(self.M, 2*self.N, 2)] + \
             self.ha_down1
         )
 
         self.hs_up1 = [ConvTransBlock(self.N, self.N, 32, 4, 0, 'W' if not i%2 else 'SW') 
                       for i in range(config[3])] + \
-                      [subpel_conv3x3(2*N, 320, 2)]
+                      [subpel_conv3x3(2*N, self.M, 2)]
 
         self.h_mean_s = nn.Sequential(
             *[ResidualBlockUpsample(192, 2*self.N, 2)] + \
@@ -378,7 +379,7 @@ class TCM(CompressionModel):
 
         self.hs_up2 = [ConvTransBlock(self.N, self.N, 32, 4, 0, 'W' if not i%2 else 'SW') 
                       for i in range(config[3])] + \
-                      [subpel_conv3x3(2*N, 320, 2)]
+                      [subpel_conv3x3(2*N, self.M, 2)]
 
 
         self.h_scale_s = nn.Sequential(

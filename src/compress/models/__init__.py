@@ -61,7 +61,7 @@ def get_model(args,device, lmbda_list):
 
 
 
-    if  args.model == "progressive":
+    elif  args.model == "progressive":
         net = models[args.model]( N = args.N,
                                 M = args.M,
                                 multiple_decoder = args.multiple_decoder,

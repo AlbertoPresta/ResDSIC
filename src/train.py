@@ -98,8 +98,10 @@ def main(argv):
     print(args)
 
     
-
-    wandb.init( config= args, project="ResDSIC-dsic", entity="albipresta")   
+    if  args.model == "restcm": 
+        wandb.init( config= args, project="ResDSIC-tcm", entity="albipresta") 
+    else:
+        wandb.init( config= args, project="ResDSIC-dsic", entity="albipresta")   
     if args.seed is not None:
         torch.manual_seed(args.seed)
         random.seed(args.seed)
@@ -144,7 +146,7 @@ def main(argv):
         lmbda_list = args.lmbda_list
 
     net = get_model(args,device, lmbda_list)
-    if args.model in ("progressive","progressive_enc","progressive_res","progressive_maks","progressive_res","channel"):
+    if args.model in ("restcm","progressive","progressive_enc","progressive_res","progressive_maks","progressive_res","channel"):
         progressive = True
     else:
         progressive = False
@@ -158,7 +160,11 @@ def main(argv):
     last_epoch = 0
 
     optimizer, aux_optimizer = configure_optimizers(net, args)
-    lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, "min", factor=0.3, patience=args.patience)
+    if "tcm" in args.model:
+        print("multistep")
+        lr_scheduler = optim.lr_scheduler.MultiStepLR(optimizer, [45,48], gamma=0.1, last_epoch=-1) 
+    else:
+        lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, "min", factor=0.3, patience=args.patience)
     criterion = ScalableRateDistortionLoss(lmbda_list=args.lmbda_list)
 
 
@@ -249,9 +255,11 @@ def main(argv):
         print("finito il train della epoca")
         loss = valid_epoch(epoch, valid_dataloader,criterion, net, pr_list = [0,1], progressive=progressive)
         print("finito il valid della epoca")
-
-        lr_scheduler.step(loss)
-        print(f'Current patience level: {lr_scheduler.patience - lr_scheduler.num_bad_epochs}')
+        if "tcm" in args.model:
+            lr_scheduler.step()
+        else:
+            lr_scheduler.step(loss)
+            print(f'Current patience level: {lr_scheduler.patience - lr_scheduler.num_bad_epochs}')
         
 
         
@@ -301,6 +309,13 @@ def main(argv):
                        progressive=progressive)
         print("finito il test della epoca: ",bpp_t," ",psnr_t)
 
+
+        end = time.time()
+        print("Runtime of the epoch:  ", epoch)
+        sec_to_hours(end - start) 
+        print("END OF EPOCH ", epoch)
+
+
         is_best = loss < best_loss
         best_loss = min(loss, best_loss)
 
@@ -321,8 +336,19 @@ def main(argv):
             bpp_res["our"] = bpp
             psnr_res["our"] = psnr
 
-            psnr_res["base"] =   [29.20, 30.59,32.26,34.15,35.91,37.72]
-            bpp_res["base"] =  [0.127,0.199,0.309,0.449,0.649,0.895]
+            if "tcm" not in args.model:
+                psnr_res["base"] =   [29.20, 30.59,32.26,34.15,35.91,37.72]
+                bpp_res["base"] =  [0.127,0.199,0.309,0.449,0.649,0.895]
+            else:
+                if args.N == 128:
+                    psnr_res["base"] = [30.07, 30.85, 32.59, 34.33, 36.15, 38.07]
+                    bpp_res["base"] = [0.155, 0.194, 0.300, 0.443, 0.625, 0.880]
+                elif args.N == 96: 
+                    psnr_res["base"] = [29.88, 30.62, 32.38, 34.15, 36.10, 37.98]
+                    bpp_res["base"] =  [0.158, 0.195, 0.295, 0.439, 0.623, 0.882]  
+                else: 
+                    psnr_res["base"] = [29.99, 30.57, 32.42, 34.18, 36.01, 37.96]
+                    bpp_res["base"] =  [0.161, 0.198, 0.306, 0.455, 0.628, 0.899]                                   
 
             plot_rate_distorsion(bpp_res, psnr_res,epoch_enc, eest="compression")
             
@@ -346,7 +372,7 @@ def main(argv):
 
 
         name_folder = check + "_" + "_multi_" + stringa_lambda + "_"\
-              + args.model + "_" + str(args.division_dimension) + "_" + \
+              + args.model + "_" + str(args.N) + "_" + str(args.division_dimension) + "_" + \
              str(args.support_progressive_slices) + "_" + args.mask_policy +  "_" +    str(args.lrp_prog) + str(args.joiner_policy) + \
             "_" + str(args.multiple_encoder) + "_" + str(args.multiple_decoder)
         cartella = os.path.join(args.save_path,name_folder)
@@ -389,10 +415,6 @@ def main(argv):
 
 
 
-        end = time.time()
-        print("Runtime of the epoch:  ", epoch)
-        sec_to_hours(end - start) 
-        print("END OF EPOCH ", epoch)
 
 
 if __name__ == "__main__":

@@ -50,21 +50,15 @@ def train_one_epoch(model,
             aux_optimizer.zero_grad()
 
         if sampling_training:
-
             quality =  random.randint(0, len(lmbda_list) - 1)
             lmbda = lmbda_list[quality]
             out_net = model(d, quality = quality)
             out_criterion = criterion(out_net, d, lmbda = lmbda)
         else:
-            
             out_net = model(d, quality = list_quality)
             out_criterion = criterion(out_net, d)
 
-
-
-
         out_criterion["loss"].backward()
-
         if aux_optimizer is not None:
             aux_loss = model.aux_loss()
             aux_loss.backward()

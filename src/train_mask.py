@@ -11,7 +11,7 @@ import torch.optim as optim
 from   compress.training.step import train_one_epoch, valid_epoch, test_epoch, compress_with_ac
 from torch.utils.data import DataLoader
 from torchvision import transforms
-from compress.training.loss import  DistortionLoss, ScalableRateDistortionLoss
+from compress.training.loss import  DistortionLoss, ScalableRateDistortionLoss, MaskRateDistortionLoss
 from compress.datasets.utils import ImageFolder, TestKodakDataset
 from compress.models import get_model
 import os
@@ -74,18 +74,22 @@ def configure_optimizers(net, args):
         lr=args.learning_rate,
     )
 
-    return optimizer
+    if args.only_mask is False:
+        aux_optimizer = optim.Adam(
+        (params_dict[n] for n in sorted(aux_parameters)),
+        lr=args.aux_learning_rate,
+    )
+    else:
+        aux_optimizer = None
+
+    return optimizer, aux_optimizer
 
 
 
 
 def save_checkpoint(state, is_best, last_pth,very_best):
-
-
     if is_best:
-        print("ohhuuuuuuuuuuuuuu veramente il best-------------Z ",very_best)
         torch.save(state, very_best)
-        #torch.save(state, very_best)
         wandb.save(very_best)
     else:
         torch.save(state, last_pth)
@@ -96,7 +100,6 @@ def main(argv):
     args = parse_args_mask(argv)
     print(args)
 
-    
 
     wandb.init( config= args, project="ResDSIC-mask", entity="albipresta")   
     if args.seed is not None:
@@ -117,7 +120,7 @@ def main(argv):
 
     filelist = test_dataset.image_path
 
-    device = "cuda" #if args.cuda and torch.cuda.is_available() else "cpu"
+    device = "cuda" 
 
     train_dataloader = DataLoader(
         train_dataset,
@@ -138,23 +141,22 @@ def main(argv):
     test_dataloader = DataLoader(test_dataset, batch_size=args.test_batch_size, num_workers=args.num_workers,shuffle=False,pin_memory=(device == "cuda"),)
 
     
-    print("Loading", args.checkpoint)
     checkpoint = torch.load(args.checkpoint, map_location=device)
-    new_args = checkpoint["args"]
-    lmbda_list = new_args.lmbda_list if "quantile" in args.mask_policy else args.lmbda_list
-    if "multiple_encoder" not in new_args:
-        new_args.multiple_encoder = False
+    pret_args = checkpoint["args"]
+    lmbda_list = pret_args.lmbda_list if "quantile" in args.mask_policy else args.lmbda_list
+    if "multiple_encoder" not in pret_args:
+        pret_args.multiple_encoder = False
 
-    new_args.mask_policy = args.mask_policy # impongo una mask policy diversa!!!
+    pret_args.mask_policy = args.mask_policy # impongo una mask policy diversa!!!
 
     if args.pretrained is False: 
-        new_args.support_progressive_slices = 4
-    net = get_model(new_args,device, lmbda_list)
+        pret_args.support_progressive_slices = 4
+    net = get_model(pret_args,device, lmbda_list)
 
     if args.pretrained:
         net.load_state_dict(checkpoint["state_dict"],strict = False) #deve essere falso altrimenti mi da errore
     net.update() 
-    if new_args.model in ("progressive","progressive_enc","progressive_res","progressive_maks","progressive_res","channel"):
+    if pret_args.model in ("progressive","progressive_enc","progressive_res","progressive_maks","progressive_res","channel"):
         progressive = True
     else:
         progressive = False
@@ -165,16 +167,15 @@ def main(argv):
 
     last_epoch = 0
 
-    optimizer = configure_optimizers(net, args)
-    aux_optimizer = None
+    optimizer, aux_optimizer = configure_optimizers(net, args)
     lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, "min", factor=0.3, patience=args.patience)
-    criterion = DistortionLoss() if "quantile" in args.mask_policy else ScalableRateDistortionLoss(lmbda_list=args.lmbda_list)
+    criterion = MaskRateDistortionLoss(lmbda=args.lmbda_list[1])
 
 
     net.update()  
 
 
-    list_quality = args.list_quality if "quantile" in args.mask_policy else None
+    list_quality = args.list_quality  #if "quantile" in args.mask_policy else None
     best_loss = float("inf")
     counter = 0
     epoch_enc = 0
@@ -226,7 +227,7 @@ def main(argv):
                        test_dataloader,
                        criterion, 
                        net, 
-                       pr_list =net.quality_list, #list_quality + [10], #sss
+                       pr_list =[0] + net.quality_list + [10], #list_quality + [10], #sss
                        mask_pol = mask_pol,
                        progressive=progressive)
         print("finito il test della epoca: ",bpp_t," ",psnr_t)
@@ -242,7 +243,7 @@ def main(argv):
                                         filelist, 
                                         device,
                                         epoch = epoch_enc, 
-                                        pr_list =net.quality_list,  
+                                        pr_list =[0.0] + net.quality_list + [10.0],  
                                         mask_pol = mask_pol,
                                         writing = None,
                                         progressive = progressive)
@@ -268,7 +269,7 @@ def main(argv):
 
 
 
-        if new_args.checkpoint != "none":
+        if pret_args.checkpoint != "none":
             check = "pret"
         else:
             check = "zero"

@@ -50,7 +50,6 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
                          division_dimension=division_dimension,
                          shared_entropy_estimation=shared_entropy_estimation,
                          joiner_policy=joiner_policy,
-
                          **kwargs)
         
 
@@ -96,8 +95,6 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
                 ) for i in range(self.num_slice_cumulative_list[0])
             )  
         
-
-
         self.cc_mean_transforms = nn.ModuleList(
                 nn.Sequential(
                     conv(self.division_dimension[0] + 32*min(i, 5), 224, stride=1, kernel_size=3),
@@ -269,9 +266,12 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
         if quality is None:
             list_quality = self.quality_list
         elif isinstance(quality,list):
-            list_quality = quality 
+            if quality[0] == 0:
+                list_quality = quality 
+            else:
+                list_quality = [0] + quality
         else:
-            list_quality = [0, quality] 
+            list_quality = [quality] 
         return list_quality
 
 
@@ -538,7 +538,7 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
 
             y_hat_slices.append(y_hat_slice)
 
-        if quality == 0:
+        if quality <= 0:
             return {"strings": [y_strings, z_strings],"shape":z.size()[-2:], "masks":masks}
         
         y_hat_slices_quality = []
@@ -761,7 +761,7 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
                                                     current_index,
                                                     y_hat_slices_quality) 
             
-            
+
             
 
 

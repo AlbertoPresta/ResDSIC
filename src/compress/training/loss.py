@@ -3,7 +3,53 @@ import torch.nn as nn
 import torch 
 from torch.nn.functional import mse_loss
 
+class MaskRateDistortionLoss(nn.Module):
+    def __init__(self, lmbda=1e-2,weight = 255**2):
+        super().__init__()
+        self.mse = nn.MSELoss()
+        self.lmbda = lmbda
+        self.weight = weight
 
+    def forward(self,output,target,lmbda = None): 
+
+        lmbda = self.lmbda if lmbda is None else torch.tensor([lmbda]).to(self.device) #dddd
+
+        batch_size_images, _, H, W = target.size()
+        out = {}
+        num_pixels = batch_size_images * H * W
+
+        #batch_size_recon = output["x_hat"].shape[0] # num_levels,N
+        #if batch_size_recon != 1:
+            # Copy images to match the batch size of recon_images
+        #    target = target.unsqueeze(0)
+        #    extend_images = target.repeat(batch_size_recon,1,1,1,1) #num_levels, BS,W,H
+        #else:
+        #    extend_images = target.unsqueeze(0)
+        
+
+        out["mse_loss"] = self.mse(output["x_hat"][-1].squeeze(0), target)
+        #out["mse_loss"] = mse_loss(extend_images,output["x_hat"],reduction = 'none') # compute the point-wise mse #((scales * (extend_images - output["x_hat"])) ** 2).mean()*self.weight
+        #out["mse_loss"] = out["mse_loss"].mean(dim=(1,2,3,4)) #dim = num_levels 
+
+
+        denominator = -math.log(2) * num_pixels  
+        likelihoods = output["likelihoods"]
+        out["bpp_hype"] =  (torch.log(likelihoods["z"]).sum())/denominator
+
+        if "z_prog" in list(out.keys()):
+            out["bpp_hype"] = out["bpp_hype"] +  torch.log(likelihoods["z_prog"]).sum()/denominator
+
+        if "y_prog" in list(likelihoods.keys()):
+            out["bpp_base"] = (torch.log(likelihoods["y"]).sum())/denominator
+            out["bpp_scalable"] = (torch.log(likelihoods["y_prog"]).sum()).sum()/denominator 
+            out["bpp_loss"] = out["bpp_scalable"] +  out["bpp_hype"]
+        else: 
+            out["bpp_base"] = (torch.log(likelihoods["y"].squeeze(0)).sum())/denominator
+            out["bpp_scalable"] = ((torch.log(likelihoods["y"]).sum()).sum()/denominator)*0.0
+            out["bpp_loss"] = out["bpp_scalable"] +  out["bpp_hype"]
+        #out["loss"] = out["bpp_loss"] + self.weight*(lmbda*out["mse_loss"]).mean()
+        out["loss"] = self.weight*(lmbda*out["mse_loss"]).mean()  
+        return out
 
 
 

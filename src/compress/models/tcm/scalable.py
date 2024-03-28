@@ -72,6 +72,8 @@ class ResTCM(TCM):
                                    self.scalable_levels,
                                    self.dim_chunk,num_levels = self.num_slices_list[1] )
         
+        self.quality_list = [i for i in range(self.scalable_levels)]
+        
         if self.multiple_decoder:
             self.g_s = nn.ModuleList(
                 nn.Sequential(*[ResidualBlockUpsample(self.dimensions_M[0], 2*self.N, 2)] \
@@ -269,7 +271,7 @@ class ResTCM(TCM):
 
             scale_support = torch.cat([latent_scales[:,:self.dimensions_M[0]]] + support_slices, dim=1)
             scale_support = self.atten_scale[idx](scale_support)
-            scale = self.cc_scale_transforms[idx](scale_support)
+            scale = self.cc_scale_transforms[idx](scale_support) #ddd
             scale = scale[:, :, :y_shape[0], :y_shape[1]]
 
 
@@ -344,7 +346,7 @@ class ResTCM(TCM):
                 lrp = 0.5 * torch.tanh(lrp)
                 y_hat_slice += lrp   
 
-                # faccio il merge qua!!!!!
+
                 y_hat_slice = self.merge(y_hat_slice,
                                          y_hat_slices_base[current_index],
                                          current_index)
@@ -742,3 +744,41 @@ class ResTCM(TCM):
             "z_hat":z_hat
         }     
 
+    def print_information(self):
+        if self.multiple_encoder is False:
+            print(" g_a: ",sum(p.numel() for p in self.g_a.parameters()))
+        else:
+            print(" g_a: ",sum(p.numel() for p in self.g_a.parameters()))
+            print(" g_a_enh: ",sum(p.numel() for p in self.g_a_enh.parameters()))
+        print(" h_a: ",sum(p.numel() for p in self.h_a.parameters()))
+        print(" h_means_a: ",sum(p.numel() for p in self.h_mean_s.parameters()))
+        print(" h_scale_a: ",sum(p.numel() for p in self.h_scale_s.parameters()))
+        print("cc_mean_transforms",sum(p.numel() for p in self.cc_mean_transforms.parameters()))
+        print("cc_scale_transforms",sum(p.numel() for p in self.cc_scale_transforms.parameters()))
+
+
+        if self.mask_policy == "single-learnable-mask-quantile":
+            print("mask",sum(p.numel() for p in self.masking.mask_conv.parameters()))
+        if "gamma" in self.mask_policy:
+            print("mask",sum(p.numel() for p in self.masking.mask_conv.parameters()))
+            for i in range(len(self.masking.gamma)):
+                print("gamma " + str(i),sum(p.numel() for p in self.masking.gamma[i]))
+
+        print("cc_mean_transforms_prog",sum(p.numel() for p in self.cc_mean_transforms_prog.parameters()))
+        print("cc_scale_transforms_prog",sum(p.numel() for p in self.cc_scale_transforms_prog.parameters()))  
+
+        print("lrp_transform",sum(p.numel() for p in self.lrp_transforms.parameters()))
+        if self.multiple_decoder:
+            for i in range(2):
+                print("g_s_" + str(i) + ": ",sum(p.numel() for p in self.g_s[i].parameters()))
+        else: 
+            print("g_s",sum(p.numel() for p in self.g_s.parameters()))
+
+        if self.joiner_policy == "cond":
+            print("joiner",sum(p.numel() for p in self.joiner.parameters()))  
+        print("**************************************************************************")
+        model_tr_parameters = sum(p.numel() for p in self.parameters() if p.requires_grad)
+        model_fr_parameters = sum(p.numel() for p in self.parameters() if p.requires_grad== False)
+        print(" trainable parameters: ",model_tr_parameters)
+        print(" freeze parameterss: ", model_fr_parameters)
+        return sum(p.numel() for p in self.parameters() if p.requires_grad)

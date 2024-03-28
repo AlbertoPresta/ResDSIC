@@ -187,7 +187,6 @@ class ChannelMask(nn.Module):
 
 
         if self.mask_policy == "single-learnable-mask-gamma":
-            print("mannaggia a gamma: ",self.num_levels)
             self.gamma = [
                         torch.nn.Parameter(torch.ones((self.scalable_levels - 2, self.dim_chunk))) 
                         for _ in range(self.num_levels)
@@ -226,6 +225,17 @@ class ChannelMask(nn.Module):
                                     kernel_size=1, 
                                     stride=1),) for _ in range(self.scalable_levels -2)
                                     ) for _ in range(self.num_levels) )
+        elif self.mask_policy == "single-learnable-mask-nested":
+            self.mask_conv = nn.Sequential(
+                            conv3x3(self.input_dim,self.dim_chunk),
+                            nn.ReLU(),
+                            conv3x3(self.input_dim,self.dim_chunk,  stride=2),
+                            nn.ReLU(),
+                            subpel_conv3x3(self.input_dim,self.dim_chunk, 2),
+                            nn.ReLU(),
+                            conv3x3(self.input_dim,self.dim_chunk),
+                            nn.Sigmoid()                           
+                            ) 
 
 
 
