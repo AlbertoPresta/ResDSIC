@@ -83,9 +83,8 @@ class ProgressiveWACNN(WACNN):
                         nn.Sequential(
                         Win_noShift_Attention(dim= self.dimensions_M[i], num_heads=8, window_size=4, shift_size=2),
                         deconv(self.dimensions_M[i], self.inner_dimensions[i], kernel_size=5, stride=2),
-                        # qua posso mettere KD 
                         GDN(self.inner_dimensions[i], inverse=True),
-                        
+       
                         deconv(self.inner_dimensions[i], N, kernel_size=5, stride=2),
                         GDN(N, inverse=True),
                         Win_noShift_Attention(dim=N, num_heads=8, window_size=8, shift_size=4),

@@ -23,11 +23,13 @@ from .scalable.progressive import ProgressiveWACNN,ProgressiveMaskedWACNN
 from .scalable.progressive_res import ProgressiveResWACNN
 from .scalable.CHP_res import ChannelProgresssiveWACNN
 from .scalable.progressive_enc import ProgressiveEncWACNN
+from .tcm.scalable import ResTCM
 
 
 models = {
     'stf': SymmetricalTransFormer,
     'cnn': WACNN,
+    "restcm":ResTCM,
     "resWacnn":ResWACNN,
     "shared":ResWACNNSharedEntropy,
     "independent":ResWACNNIndependentEntropy,
@@ -44,7 +46,19 @@ models = {
 
 def get_model(args,device, lmbda_list):
 
-    print("te model is----> ",args.model)
+    if args.model == "restcm":
+        net = models[args.model](N = args.N,
+                                M = args.M,
+                                multiple_decoder = args.multiple_decoder,
+                                multiple_encoder = args.multiple_encoder,
+                                dim_chunk = args.dim_chunk,
+                                division_dimension = args.division_dimension,
+                                lmbda_list = lmbda_list,
+                                mask_policy = args.mask_policy,
+                                joiner_policy = args.joiner_policy,
+                                support_progressive_slices =args.support_progressive_slices,
+        )
+
 
 
     if  args.model == "progressive":

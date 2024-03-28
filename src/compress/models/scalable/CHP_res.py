@@ -38,7 +38,6 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
                 lmbda_list = [0.075],
                 shared_entropy_estimation = False,
                 joiner_policy = "res",
-
                 support_progressive_slices = 0,
                 **kwargs):
         
@@ -141,7 +140,7 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
 
         
         estremo_indice = self.support_progressive_slices + 1
-        delta_dim = self.division_dimension[1] -self.division_dimension[0]
+        delta_dim = self.division_dimension[1] - self.division_dimension[0]
         self.cc_mean_transforms_prog = nn.ModuleList(
                     nn.Sequential(
                         conv(delta_dim + 32*min(i + 1, estremo_indice), 224, stride=1, kernel_size=3),
@@ -308,7 +307,6 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
         
 
         if "gamma" in self.mask_policy:
-            print("entro qua per gamma")
             for i in range(len(self.masking.gamma)): #ddd
                 self.masking.gamma[i].requires_grad_(True)
 
@@ -343,11 +341,8 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
         y_slices = y.chunk(self.num_slices, 1) # total amount of slices
 
         y_hat_slices_base = []
-
-
         y_likelihood_base= []
         y_likelihood_enhanced = []
-
         x_hat_progressive = []
 
 
@@ -378,7 +373,6 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
 
             lrp_support = torch.cat([mean_support,y_hat_slice], dim=1)
             lrp = self.lrp_transforms[idx](lrp_support)
-
             lrp = 0.5 * torch.tanh(lrp)
             y_hat_slice += lrp               
 
@@ -434,7 +428,9 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
                 y_slice_m = y_slice  - mu
                 y_slice_m = y_slice_m*block_mask
 
-                _, y_slice_likelihood = self.gaussian_conditional(y_slice_m, scale*block_mask, training = training)
+                _, y_slice_likelihood = self.gaussian_conditional(y_slice_m, 
+                                                                  scale*block_mask, 
+                                                                  training = training)
                 y_hat_slice = ste_round(y_slice - mu)*block_mask + mu
 
 
@@ -640,8 +636,6 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
             return {"x_hat": x_hat}
 
         y_hat_slices_quality = []
-        #y_hat_slices_quality = y_hat_slices + []   
-
         for slice_index in range(self.ns0,self.ns1):
             pr_strings = y_string[slice_index]
             current_index = slice_index%self.ns0
@@ -755,7 +749,7 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
             }             
 
         y_hat_slices_quality = []
-        #y_hat_slices_quality = y_hat_slices + []   
+
         y_likelihood_quality = []
         y_likelihood_quality = y_likelihood + []
     
@@ -766,6 +760,10 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
             support_slices = self.determine_support(y_hat_slices,
                                                     current_index,
                                                     y_hat_slices_quality) 
+            
+            
+            
+
 
            
             mean_support = torch.cat([latent_means[:,self.division_dimension[0]:]] + support_slices, dim=1)
