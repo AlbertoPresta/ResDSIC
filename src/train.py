@@ -230,7 +230,7 @@ def main(argv):
         print("entro qua!!!!!")
         list_pr = [0,0.5,1]
         mask_pol = "scalable_res" 
-        bpp, psnr = compress_with_ac(net,  filelist, device, epoch = 0, pr_list = list_pr,   writing = None, mask_pol=mask_pol)
+        bpp, psnr, _= compress_with_ac(net,  filelist, device, epoch = 0, pr_list = list_pr,   writing = None, mask_pol=mask_pol)
         print("*********************************   OVER *********************************************************")
         print(bpp,"  ++++   ",psnr) 
         return 0

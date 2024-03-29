@@ -4,11 +4,12 @@ import torch
 from torch.nn.functional import mse_loss
 
 class MaskRateDistortionLoss(nn.Module):
-    def __init__(self, lmbda=1e-2,weight = 255**2):
+    def __init__(self, lmbda=1e-2,weight = 255**2, device = "cuda"):
         super().__init__()
         self.mse = nn.MSELoss()
         self.lmbda = lmbda
         self.weight = weight
+        self.device = device
 
     def forward(self,output,target,lmbda = None): 
 
@@ -47,8 +48,8 @@ class MaskRateDistortionLoss(nn.Module):
             out["bpp_base"] = (torch.log(likelihoods["y"].squeeze(0)).sum())/denominator
             out["bpp_scalable"] = ((torch.log(likelihoods["y"]).sum()).sum()/denominator)*0.0
             out["bpp_loss"] = out["bpp_scalable"] +  out["bpp_hype"]
-        #out["loss"] = out["bpp_loss"] + self.weight*(lmbda*out["mse_loss"]).mean()
-        out["loss"] = self.weight*(lmbda*out["mse_loss"]).mean()  
+        out["loss"] = out["bpp_loss"] + self.weight*(lmbda*out["mse_loss"]).mean()
+        #out["loss"] = self.weight*(lmbda*out["mse_loss"]).mean()  
         return out
 
 

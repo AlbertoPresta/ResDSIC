@@ -184,8 +184,6 @@ class ChannelMask(nn.Module):
                             nn.Sigmoid()                           
                             ) 
             
-
-
         if self.mask_policy == "single-learnable-mask-gamma":
             self.gamma = [
                         torch.nn.Parameter(torch.ones((self.scalable_levels - 2, self.dim_chunk))) 
@@ -236,11 +234,6 @@ class ChannelMask(nn.Module):
                             conv3x3(self.input_dim,self.dim_chunk),
                             nn.Sigmoid()                           
                             ) 
-
-
-
-
-
 
     def apply_noise(self, mask, tr):
             if tr:

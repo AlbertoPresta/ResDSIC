@@ -278,6 +278,13 @@ def test_epoch(epoch, test_dataloader,criterion, model, pr_list, mask_pol = None
         wandb.log(log_dict)
     return [bpp_loss[i].avg for i in range(len(bpp_loss))], [psnr[i].avg for i in range(len(psnr))]
 
+import time
+def sec_to_hours(seconds):
+    a=str(seconds//3600)
+    b=str((seconds%3600)//60)
+    c=str((seconds%3600)%60)
+    d=["{} hours {} mins {} seconds".format(a, b, c)]
+    print(d[0])
 
 def compress_with_ac(model,  filelist, device, epoch, pr_list = [0.05,0.04,0.03,0.02,0.01], mask_pol = None,  writing = None, progressive = False):
     #pr_list = [0] + pr_list + [-1]
@@ -287,6 +294,7 @@ def compress_with_ac(model,  filelist, device, epoch, pr_list = [0.05,0.04,0.03,
     bpp_loss = [AverageMeter() for _ in range(l)]
     psnr =[AverageMeter() for _ in range(l)]
     mssim = [AverageMeter() for _ in range(l)]
+    dec_time = [AverageMeter() for _ in range(l)]
 
     with torch.no_grad():
         for i,d in enumerate(filelist):
@@ -306,8 +314,14 @@ def compress_with_ac(model,  filelist, device, epoch, pr_list = [0.05,0.04,0.03,
                 name = "level_" + str(j)
 
                 data =  model.compress(x_padded, quality =p, mask_pol = mask_pol )
+                #if j%8==0:
+                #    print(sum(len(s[0]) for s in data["strings"][0]))
+                start = time.time()
                 out_dec = model.decompress(data["strings"], data["shape"], quality = p, mask_pol = mask_pol, masks = data["masks"])
-
+                end = time.time()
+                #print("Runtime of the epoch:  ", epoch)
+                decoded_time = end-start
+                #sec_to_hours(end - start) 
                 out_dec["x_hat"] = F.pad(out_dec["x_hat"], unpad)
                 out_dec["x_hat"].clamp_(0.,1.)     
 
@@ -316,6 +330,7 @@ def compress_with_ac(model,  filelist, device, epoch, pr_list = [0.05,0.04,0.03,
                 ms_ssim_im = -10*math.log10(1 - ms_ssim_im )
                 psnr[j].update(psnr_im)
                 mssim[j].update(ms_ssim_im)
+                dec_time[j].update(decoded_time)
             
                 size = out_dec['x_hat'].size()
                 num_pixels = size[0] * size[2] * size[3]
@@ -378,4 +393,4 @@ def compress_with_ac(model,  filelist, device, epoch, pr_list = [0.05,0.04,0.03,
             f=open(fls , "a+")
             f.write("SEQUENCE "  +   "AVG " + "BITS " +  str(bpp_loss[j].avg) + " YPSNR " +  str(psnr[j].avg)  + " YMSSIM " +  str(mssim[j].avg) + "\n")
             f.close()
-    return [bpp_loss[i].avg for i in range(len(bpp_loss))], [psnr[i].avg for i in range(len(psnr))]
+    return [bpp_loss[i].avg for i in range(len(bpp_loss))], [psnr[i].avg for i in range(len(psnr))], [dec_time[i].avg for i in range(len(dec_time))]

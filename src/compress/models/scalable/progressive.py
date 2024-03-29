@@ -264,7 +264,7 @@ class ProgressiveWACNN(WACNN):
 
 
         y_slices = y.chunk(self.num_slices, 1) # total amount of slices
-
+        masks = []
         y_strings = []
 
 
@@ -309,12 +309,13 @@ class ProgressiveWACNN(WACNN):
                 break
 
         return {"strings": [y_strings, z_strings],
-                "shape":z.size()[-2:]
+                "shape":z.size()[-2:],
+                "masks": masks
                 }
 
 
 
-    def decompress(self, strings, shape, quality, mask_pol = None):
+    def decompress(self, strings, shape, quality, mask_pol = None, masks = None):
 
 
         z_hat = self.entropy_bottleneck.decompress(strings[1], shape)
