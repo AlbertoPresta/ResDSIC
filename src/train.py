@@ -14,7 +14,7 @@ from torch.utils.data import DataLoader
 from torchvision import transforms
 from compress.training.loss import ScalableRateDistortionLoss
 from compress.datasets.utils import ImageFolder, TestKodakDataset
-from compress.models import get_model
+from compress.models import get_model, initialize_model_from_pretrained
 #from compress.zoo import models
 import os
 
@@ -86,7 +86,6 @@ def save_checkpoint(state, is_best, last_pth,very_best):
     if is_best:
         print("ohhuuuuuuuuuuuuuu veramente il best-------------Z ",very_best)
         torch.save(state, very_best)
-        #torch.save(state, very_best)
         wandb.save(very_best)
     else:
         torch.save(state, last_pth)
@@ -165,7 +164,10 @@ def main(argv):
         lr_scheduler = optim.lr_scheduler.MultiStepLR(optimizer, [45,48], gamma=0.1, last_epoch=-1) 
     else:
         lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, "min", factor=0.3, patience=args.patience)
+    
+
     criterion = ScalableRateDistortionLoss(lmbda_list=args.lmbda_list)
+
 
 
 
@@ -190,22 +192,14 @@ def main(argv):
         #net.update()
         net.load_state_dict(checkpoint["state_dict"], strict=True)
     elif args.checkpoint_base != "none":
-        print("riparto da un modello base------")
-        print("Loading", args.checkpoint_base)
-        checkpoint = torch.load(args.checkpoint_base, map_location=device)
 
-
-        if args.multiple_decoder:
-            for keys in list(checkpoint.keys()):
-                if "g_s" in keys:
-                    nuova_chave = "g_s.0"  +keys[3:]
-                    checkpoint[nuova_chave] = checkpoint[keys]
-
-        #checkpoint['gaussian_conditional_prog._quantized_cdf'] = net.state_dict()['gaussian_conditional_prog._quantized_cdf']
-        net.load_state_dict(checkpoint,strict = False)
-        print("ho fatto il salvataggio!!!")#dddd
-        net.update()       
-        
+        base_checkpoint = torch.load(args.checkpoint_base,map_location=device)
+        new_check = initialize_model_from_pretrained(base_checkpoint)
+        net.load_state_dict(new_check,strict = False)
+        net.update() 
+        if args.freeze_base:
+            net.freeze_base_net()      
+    
 
 
     if args.only_progressive:
@@ -322,7 +316,7 @@ def main(argv):
         if epoch%5==0 or is_best:
             net.update()
             #net.lmbda_list
-            bpp, psnr = compress_with_ac(net,  
+            bpp, psnr,_ = compress_with_ac(net,  
                                          filelist, 
                                          device,
                                            epoch = epoch_enc, 

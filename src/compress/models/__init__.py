@@ -24,6 +24,7 @@ from .scalable.progressive_res import ProgressiveResWACNN
 from .scalable.CHP_res import ChannelProgresssiveWACNN
 from .scalable.progressive_enc import ProgressiveEncWACNN
 from .tcm.scalable import ResTCM
+from .scalable.utils import initialize_model_from_pretrained
 
 
 models = {
@@ -135,11 +136,6 @@ def get_model(args,device, lmbda_list):
     else:
         net = models[args.model]( N = args.N,
                                 M = args.M,
-                                mask_policy = args.mask_policy,
-                                lmbda_list = lmbda_list,
-                                lrp_prog = args.lrp_prog,
-                                independent_lrp = args.ind_lrp,
-                                multiple_decoder = args.multiple_decoder
                                 )
 
 

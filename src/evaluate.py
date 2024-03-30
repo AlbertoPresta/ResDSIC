@@ -10,6 +10,8 @@ from compress.datasets.utils import  TestKodakDataset
 from compress.models import get_model
 from compress.utils.plot import plot_rate_distorsion, plot_decoded_time
 import numpy as np
+
+from compress.models import ChannelProgresssiveWACNN, WACNN, initialize_model_from_pretrained
 import seaborn as sns
 
 palette = sns.color_palette("tab10")
@@ -25,16 +27,17 @@ def main(argv):
 
     print("Loading", args.checkpoint)
     checkpoint = torch.load(args.checkpoint, map_location=device)
-    new_args = checkpoint["args"]
+    #new_args = checkpoint["args"]
 
-    if "multiple_encoder" not in new_args:
-        new_args.multiple_encoder = False
+    #if "multiple_encoder" not in new_args:
+    #    new_args.multiple_encoder = False
 
-    lmbda_list = new_args.lmbda_list
-    wandb.init( config= new_args, project="EVAL", entity="albipresta")   
-    if new_args.seed is not None:
-        torch.manual_seed(args.seed)
-        random.seed(args.seed)
+    #lmbda_list = new_args.lmbda_list
+    #wandb.init( config= new_args, project="EVAL", entity="albipresta")   
+    wandb.init( config= args, project="EVAL", entity="albipresta")  
+    #if new_args.seed is not None:
+    #    torch.manual_seed(args.seed)
+    #    random.seed(args.seed)
     
 
     test_transforms = transforms.Compose(
@@ -45,10 +48,40 @@ def main(argv):
     filelist = test_dataset.image_path
 
 
-    net = get_model(new_args,device, lmbda_list)
-
-    net.load_state_dict(checkpoint["state_dict"],strict = True) #dddfff
+    #net = get_model(new_args,device, lmbda_list)
+    #net = get_model(new_args,device, lmbda_list)
+    net = WACNN()
+    #net.load_state_dict(checkpoint["state_dict"],strict = True) #dddfffffffff
+    net.load_state_dict(checkpoint,strict = True)
     net.update() 
+
+
+    
+    net_2 = ChannelProgresssiveWACNN()
+    #check = net_2.state_dict()
+
+    new_check = initialize_model_from_pretrained(checkpoint)
+
+    for i,c in enumerate(list(new_check.keys())):
+        print(i," ",c)
+
+    net_2.load_state_dict(new_check,strict = False)
+
+    
+
+    parametri_uguali = all(torch.equal(p1, p2) for p1, p2 in zip(net_2.g_s[0].parameters(), net.g_s.parameters())) #ddd
+    print("controllare se sono uguali: ",parametri_uguali)
+    parametri_uguali = all(torch.equal(p1, p2) for p1, p2 in zip(net_2.g_a[0].parameters(), net.g_a.parameters()))
+    print("controllare se sono uguali: ",parametri_uguali)
+    parametri_uguali = all(torch.equal(p1, p2) for p1, p2 in zip(net_2.cc_mean_transforms.parameters(), net.cc_mean_transforms.parameters()))
+    print("controllare se sono uguali: ",parametri_uguali)
+    parametri_uguali = all(torch.equal(p1, p2) for p1, p2 in zip(net_2.cc_scale_transforms.parameters(), net.cc_scale_transforms.parameters()))
+    print("controllare se sono uguali: ",parametri_uguali)
+    #for c in list(check.keys()):
+    #    if ("lrp_transform" in c or "cc" in c or "g_" in c) and "prog" not in c:
+    #        print(c, " our")  
+
+    """
     if new_args.model in ("progressive","progressive_enc","progressive_res","progressive_maks","progressive_res","channel"):
         progressive = True
     else:
@@ -177,7 +210,7 @@ def main(argv):
 
     plot_decoded_time(bpp_res,decoded_time,0,eest="compression")
 
-
+    """
         
 
 

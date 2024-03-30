@@ -38,6 +38,7 @@ class ProgressiveWACNN(WACNN):
                 division_dimension = [320,416],
                 dim_chunk = 32,
                 multiple_decoder = True,
+                multiple_encoder = False,
                 mask_policy = None,
                 lmbda_list = [0.075],
                 inner_dimensions = [192,192],
@@ -47,10 +48,11 @@ class ProgressiveWACNN(WACNN):
 
 
         self.lmbda_list = lmbda_list
+        self.multiple_encoder = multiple_encoder
         self.inner_dimensions = inner_dimensions
         self.N = N 
         self.M = M 
-        self.division_dimension = division_dimension
+
         self.mask_policy = mask_policy
         self.dim_chunk = dim_chunk
 
@@ -76,9 +78,25 @@ class ProgressiveWACNN(WACNN):
 
         self.gaussian_conditional = GaussianConditional(None)
 
+        if self.multiple_encoder:
+            self.g_a = nn.ModuleList(
+                nn.Sequential(
+                    conv(3, N, kernel_size=5, stride=2), # halve 128
+                        GDN(N),
+                        conv(N, N, kernel_size=5, stride=2), # halve 64
+                        GDN(N),
+                        Win_noShift_Attention(dim=N, num_heads=8, window_size=8, shift_size=4), # 
+                        conv(N, N, kernel_size=5, stride=2), #32 
+                        GDN(N),
+                        conv(N, self.dimensions_M[i], kernel_size=5, stride=2), # 16
+                        Win_noShift_Attention(dim=self.dimensions_M[i], num_heads=8, window_size=4, shift_size=2),
+                    ) 
+                for i in range(2))
+
+        
 
         if self.multiple_decoder:
-            
+          
             self.g_s = nn.ModuleList(
                         nn.Sequential(
                         Win_noShift_Attention(dim= self.dimensions_M[i], num_heads=8, window_size=4, shift_size=2),
@@ -140,9 +158,12 @@ class ProgressiveWACNN(WACNN):
 
     def forward(self,x, quality = None, mask_pol = None, training = True):
 
-
-
-        y = self.g_a(x)
+        if self.multiple_encoder is False:
+            y = self.g_a(x)
+        else:
+            y_base = self.g_a[0](x)
+            y_enh = self.g_a[1](x)
+            y = torch.cat([y_base,y_enh],dim = 1).to(x.device)
         y_shape = y.shape[2:]
         z = self.h_a(y)
         _, z_likelihoods = self.entropy_bottleneck(z)
@@ -232,18 +253,7 @@ class ProgressiveWACNN(WACNN):
 
 
 
-    def extract_mask(self,scale,  pr = 0):
-        shapes = scale.shape
-        bs, ch, w,h = shapes
-        assert scale is not None 
-        #pr = pr*0.1  
-        pr = 1 -pr 
-        scale = scale.ravel()
-        quantile = torch.quantile(scale, pr)
-        res = scale >= quantile 
-        #print("dovrebbero essere soli 1: ",torch.unique(res, return_counts = True))
-        return res.reshape(bs,ch,w,h).to(torch.float).to(scale.device)
-    
+
 
 
     def compress(self, x, quality = 0.0, mask_pol = None):
@@ -251,7 +261,12 @@ class ProgressiveWACNN(WACNN):
         if mask_pol is None:
             mask_pol = self.mask_policy
 
-        y = self.g_a(x)
+        if self.multiple_encoder is False:
+            y = self.g_a(x)
+        else:
+            y_base = self.g_a[0](x)
+            y_enh = self.g_a[1](x)
+            y = torch.cat([y_base,y_enh],dim = 1).to(x.device)
         y_shape = y.shape[2:]
 
         z = self.h_a(y)
@@ -281,13 +296,10 @@ class ProgressiveWACNN(WACNN):
 
             if slice_index < self.num_slice_cumulative_list[0] or quality == 0:
                 index = self.gaussian_conditional.build_indexes(scale)
-                #y_q_slice = self.gaussian_conditional.quantize(y_slice, "symbols", mu)
                 y_q_string  = self.gaussian_conditional.compress(y_slice, index,mu)
             else:
-
                 current_index =slice_index%self.num_slice_cumulative_list[0]
                 block_mask = self.masking(scale,slice_index = current_index, pr = quality, mask_pol = mask_pol)
-                #block_mask = self.masking.apply_noise(block_mask, False)
                 index = self.gaussian_conditional.build_indexes(scale*block_mask).int()
 
                 y_q_string  = self.gaussian_conditional.compress((y_slice - mu)*block_mask, index)
