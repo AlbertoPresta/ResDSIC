@@ -132,20 +132,8 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
 
         if self.multiple_hyperprior:
 
-            self.entropy_bottleneck_prog = EntropyBottleneck(self.N)
+            #self.entropy_bottleneck_prog = EntropyBottleneck(self.N)
 
-            self.h_a = nn.ModuleList(
-                nn.Sequential(
-                conv3x3(self.dimensions_M[0], 320),
-                nn.GELU(),
-                conv3x3(320, 288),
-                nn.GELU(),
-                conv3x3(288, 256, stride=2),
-                nn.GELU(),
-                conv3x3(256, 224),
-                nn.GELU(),
-                conv3x3(224, self.N, stride=2),
-            ) for i in range(2))
 
             self.h_mean_s = nn.ModuleList(
                 nn.Sequential(
@@ -254,7 +242,7 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
         self.ns0 = self.num_slice_cumulative_list[0] 
         self.ns1 = self.num_slice_cumulative_list[1] 
 
-    def freeze_base_net(self):
+    def freeze_base_net(self,multiple_hyperprior):
 
         for p in self.g_s[0].parameters():
             p.requires_grad = False
@@ -266,6 +254,14 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
             p.requires_grad = False 
         for p in self.cc_scale_transforms.parameters():
             p.requires_grad = False 
+        
+        if multiple_hyperprior:
+
+            
+            for p in self.h_scale_s[0].parameters():
+                p.requires_grad = False 
+            for p in self.h_mean_s[0].parameters():
+                p.requires_grad = False
         
 
 
@@ -368,39 +364,26 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
                         
 
     def compute_hyperprior(self,y, quality = 0):
+
+        z = self.h_a(y)
+        _, z_likelihoods = self.entropy_bottleneck(z)
+        z_offset = self.entropy_bottleneck._get_medians()
+        z_tmp = z - z_offset
+        z_hat = ste_round(z_tmp) + z_offset
         if self.multiple_hyperprior is False or quality == 0:
-            z = self.h_a(y)
-            _, z_likelihoods = self.entropy_bottleneck(z)
-            z_offset = self.entropy_bottleneck._get_medians()
-            z_tmp = z - z_offset
-            z_hat = ste_round(z_tmp) + z_offset
-            latent_scales = self.h_scale_s(z_hat)
-            latent_means = self.h_mean_s(z_hat)
-
-            z_likelihoods_prog = torch.ones_like(z_likelihoods).to(z_likelihoods).device
-            return latent_means, latent_scales, z_likelihoods, z_likelihoods_prog
+            latent_scales = self.h_scale_s(z_hat) if self.multiple_hyperprior is False else self.h_scale_s[0](z_hat) 
+            latent_means = self.h_mean_s(z_hat) if self.multiple_hyperprior is False else self.h_mean_s[0](z_hat)
+            return latent_means, latent_scales, z_likelihoods
         else:
-            z_base = self.h_a[0](y)
-            z_enh = self.h_a[1](y)
-
-            _, z_likelihoods = self.entropy_bottleneck(z_base)
-            _, z_likelihoods_prog = self.entropy_bottleneck(z_enh)
-
-            z_offset = self.entropy_bottleneck._get_medians()
-            z_tmp = z - z_offset
-            z_hat = ste_round(z_tmp) + z_offset
             latent_scales_base = self.h_scale_s[0](z_hat)
             latent_means_base = self.h_mean_s[0](z_hat)
 
-            z_offset_prog = self.entropy_bottleneck_prog._get_medians()
-            z_tmp = z - z_offset_prog
-            z_hat_prog = ste_round(z_tmp) + z_offset_prog
-            latent_scales_enh = self.h_scale_s[0](z_hat_prog)
-            latent_means_enh = self.h_mean_s[0](z_hat_prog)
+            latent_scales_enh = self.h_scale_s[1](z_hat)
+            latent_means_enh = self.h_mean_s[1](z_hat)
 
             latent_means = torch.cat([latent_means_base,latent_means_enh],dim = 1)
             latent_scales = torch.cat([latent_scales_base,latent_scales_enh],dim = 1)
-            return latent_means, latent_scales, z_likelihoods, z_likelihoods_prog
+            return latent_means, latent_scales, z_likelihoods
 
     
     def forward(self,x, quality = None, mask_pol = None, training = True):
@@ -408,7 +391,6 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
         if mask_pol is None:
             mask_pol = self.mask_policy
         list_quality = self.define_quality(quality)  
-        
         if self.multiple_encoder is False:
             y = self.g_a(x)
         else:
@@ -418,7 +400,7 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
         y_shape = y.shape[2:]
 
 
-        latent_means, latent_scales, z_likelihoods, z_likelihoods_prog = self.compute_hyperprior(y, quality)
+        latent_means, latent_scales, z_likelihoods = self.compute_hyperprior(y, quality)
  
         y_slices = y.chunk(self.num_slices, 1) # total amount of slices
 
@@ -549,27 +531,14 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
         else:
             y_likelihood_total = torch.cat(y_likelihood_total,dim = 0)  #sliirrr
         x_hats = torch.cat(x_hat_progressive,dim = 0)
-        
-      
-        
 
         return {
             "x_hat": x_hats,
-            "likelihoods": {"y": y_likelihoods_b,"y_prog":y_likelihood_total,"z": z_likelihoods, "z_prog":z_likelihoods_prog},
+            "likelihoods": {"y": y_likelihoods_b,"y_prog":y_likelihood_total,"z": z_likelihoods},
             "y_hat":y_hat_total
         }
     
 
-    def compress_hyperprior(self,z,z_prog = None, quality = 0):
-        if self.multiple_hyperprior is False or quality == 0:
-            z_strings = self.entropy_bottleneck.compress(z)
-            return z_strings,[]
-        else: 
-            z_strings = self.entropy_bottleneck.compress(z)
-            z_strings_prog = self.entropy_bottleneck_prog.compress(z_prog)
-            return z_strings, z_strings_prog
-        
-    
 
 
 
@@ -588,46 +557,31 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
         y_shape = y.shape[2:]
 
         
-        if self.multiple_hyperprior is False:
-            z_prog = None
-            z = self.h_a(y)
-        else:
-            z = self.h_a[0](y_base)
-            z_prog = self.h_a[1](y_enh)
 
-        z_strings,z_strings_prog = self.compress_hyperprior(z, z_prog) 
+        z = self.h_a(y)
+
+
+        z_strings =  self.entropy_bottleneck.compress(z)
         
+        z_hat = self.entropy_bottleneck.decompress(z_strings, z.size()[-2:])
+        latent_scales_base = self.h_scale_s(z_hat) if self.multiple_hyperprior is False else self.h_scale_s[0](z_hat)
+        latent_means_base = self.h_mean_s(z_hat) if self.multiple_hyperprior is False else self.h_mean_s[0](z_hat)
 
         if self.multiple_hyperprior is False or quality == 0:
-            z_hat = self.entropy_bottleneck.decompress(z_strings, z.size()[-2:])
-            latent_scales_base = self.h_scale_s(z_hat)
-            latent_means_base = self.h_mean_s(z_hat)
-
-            latent_scales_enh = torch.zeros_like(latent_scales_base).to(latent_scales_base.device) 
-            latent_means_enh = torch.zeros_like(latent_means_base).to(latent_means_base.device) 
+            latent_means =  latent_means_base # torch.cat([latent_means_base,latent_means_enh],dim = 1)
+            latent_scales = latent_scales_base #torch.cat([latent_scales_base,latent_scales_enh],dim = 1) 
         else:
-            z_hat_base = self.entropy_bottleneck.decompress(z_strings, z.size()[-2:])
-            latent_scales_base = self.h_scale_s[0](z_hat_base)
-            latent_means_base = self.h_mean_s[0](z_hat_base)
-
-            z_hat_enh = self.entropy_bottleneck_prog.decompress(z_strings_prog, z_prog.size()[-2:])
-            latent_scales_enh = self.h_scale_s[1](z_hat_enh) 
-            latent_means_enh = self.h_mean_s[1](z_hat_enh)
-
-        latent_means = torch.cat([latent_means_base,latent_means_enh],dim = 1)
-        latent_scales = torch.cat([latent_scales_base,latent_scales_enh],dim = 1) 
-
-
-            
+            latent_scales_enh = self.h_scale_s[1](z_hat) 
+            latent_means_enh = self.h_mean_s[1](z_hat)
+            latent_means = torch.cat([latent_means_base,latent_means_enh],dim = 1)
+            latent_scales = torch.cat([latent_scales_base,latent_scales_enh],dim = 1) 
 
         y_hat_slices = []
-
 
         y_slices = y.chunk(self.num_slices, 1) # total amount of slices
 
         y_strings = []
         masks = []
-
 
         for slice_index in range(self.ns0):
             y_slice = y_slices[slice_index]
@@ -706,39 +660,31 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
 
             y_hat_slices_quality.append(y_hat_slice)
 
-        return {"strings": [y_strings, z_strings,z_strings_prog],"shape":z.size()[-2:],"masks":masks}
+        return {"strings": [y_strings, z_strings],"shape":z.size()[-2:],"masks":masks}
 
     def decompress(self, strings, shape, quality, mask_pol = None, masks = None):
 
-
         mask_pol = self.mask_policy if mask_pol is None else mask_pol
 
+        z_hat = self.entropy_bottleneck.decompress(strings[1], shape)
+        latent_scales_base = self.h_scale_s(z_hat) if self.multiple_hyperprior is False else self.h_scale_s[0](z_hat)
+        latent_means_base = self.h_mean_s(z_hat) if self.multiple_hyperprior is False else self.h_mean_s[0](z_hat)
 
+        
         if self.multiple_hyperprior is False or quality == 0:
-            z_hat = self.entropy_bottleneck.decompress(strings[1], shape)
-            latent_scales_base = self.h_scale_s(z_hat)
-            latent_means_base = self.h_mean_s(z_hat)
-
-            latent_scales_enh = torch.zeros_like(latent_scales_base).to(latent_scales_base.device) 
-            latent_means_enh = torch.zeros_like(latent_means_base).to(latent_means_base.device) 
+            latent_scales = latent_scales_base #torch.zeros_like(latent_scales_base).to(latent_scales_base.device) 
+            latent_means = latent_means_base #torch.zeros_like(latent_means_base).to(latent_means_base.device) 
         else:
-            z_hat = self.entropy_bottleneck.decompress(strings[1], shape)
-            latent_scales_base = self.h_scale_s[0](z_hat)
-            latent_means_base = self.h_mean_s[0](z_hat)
-
-            z_hat_enh = self.entropy_bottleneck_prog.decompress(strings[2], shape)
-            latent_scales_enh = self.h_scale_s[1](z_hat_enh) 
-            latent_means_enh = self.h_mean_s[1](z_hat_enh)
-
-
-        latent_means = torch.cat([latent_means_base,latent_means_enh],dim = 1)
-        latent_scales = torch.cat([latent_scales_base,latent_scales_enh],dim = 1) 
+            latent_scales_enh = self.h_scale_s[1](z_hat) 
+            latent_means_enh = self.h_mean_s[1](z_hat)
+            latent_means = torch.cat([latent_means_base,latent_means_enh],dim = 1)
+            latent_scales = torch.cat([latent_scales_base,latent_scales_enh],dim = 1) 
 
         y_shape = [z_hat.shape[2] * 4, z_hat.shape[3] * 4]
         y_string = strings[0]
         y_hat_slices = []
 
-        for slice_index in range(self.num_slice_cumulative_list[0]):
+        for slice_index in range(self.num_slice_cumulative_list[0]): #ddd
             pr_strings = y_string[slice_index]
             idx = slice_index%self.num_slice_cumulative_list[0]
             indice = min(self.max_support_slices,idx)
@@ -829,14 +775,16 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
 
         if self.multiple_encoder is False:
             y = self.g_a(x)
+            y_base = y 
+            y_enh = y
         else:
             y_base = self.g_a[0](x)
             y_enh = self.g_a[1](x)
             y = torch.cat([y_base,y_enh],dim = 1).to(x.device) #dddd
         y_shape = y.shape[2:]
-        latent_means, latent_scales, z_likelihoods, z_likelihoods_prog = self.compute_hyperprior(y, quality)
+        latent_means, latent_scales, z_likelihoods = self.compute_hyperprior(y, quality)
 
-        y_slices = y.chunk(self.num_slices, 1) # total amount of slices
+        y_slices = y.chunk(self.num_slices, 1) # total amount of slicesy,
 
         y_hat_slices = []
         y_likelihood = []
@@ -874,7 +822,7 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
             y_likelihoods = torch.cat(y_likelihood, dim=1)
             return {
                 "x_hat": x_hat,
-                "likelihoods": {"y": y_likelihoods,"z": z_likelihoods,"z_prog":z_likelihoods_prog},
+                "likelihoods": {"y": y_likelihoods,"z": z_likelihoods},
 
             }             
 
@@ -942,8 +890,8 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
 
         return {
             "x_hat": x_hat,
-            "likelihoods": {"y": y_likelihoods,"z": z_likelihoods},
-            "z_hat":z_hat
+            "likelihoods": {"y": y_likelihoods,"z": z_likelihoods}
+
         }     
 
 

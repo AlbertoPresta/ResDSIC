@@ -108,6 +108,7 @@ class ScalableRateDistortionLoss(nn.Module):
             lmbda = self.lmbda
         else:
             lmbda = torch.tensor([lmbda]).to(self.device)
+
   
         out["mse_loss"] = mse_loss(extend_images,output["x_hat"],reduction = 'none') # compute the point-wise mse #((scales * (extend_images - output["x_hat"])) ** 2).mean()*self.weight
         out["mse_loss"] = out["mse_loss"].mean(dim=(1,2,3,4)) #dim = num_levels 

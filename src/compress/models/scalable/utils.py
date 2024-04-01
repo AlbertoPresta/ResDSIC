@@ -3,7 +3,7 @@ import numpy as np
 from collections import OrderedDict
 
 
-def initialize_model_from_pretrained( checkpoint):
+def initialize_model_from_pretrained( checkpoint,multiple_hyperprior):
 
     sotto_ordered_dict = OrderedDict()
 
@@ -20,12 +20,23 @@ def initialize_model_from_pretrained( checkpoint):
         else:
             continue
 
-    
+
     for c in list(sotto_ordered_dict.keys()):
         if "h_scale_s" in c or "h_a" in c  or "h_mean_s" in c:
             sotto_ordered_dict.pop(c)
+    if multiple_hyperprior:
+        for c in list(checkpoint.keys()):
+            if "h_mean_s" in c:
+                nuova_stringa = "h_mean_s.0." + c[9:]
+                sotto_ordered_dict[nuova_stringa] = checkpoint[c]     
+            elif "h_scale_s" in c:
+                nuova_stringa = "h_scale_s.0." + c[10:]
+                sotto_ordered_dict[nuova_stringa] = checkpoint[c]   
 
-    
+
+    for c in list(sotto_ordered_dict.keys()):
+        if "h_a" in c:
+            sotto_ordered_dict.pop(c)
     return sotto_ordered_dict
     
 

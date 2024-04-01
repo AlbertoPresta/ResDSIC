@@ -96,6 +96,7 @@ def get_model(args,device, lmbda_list):
                                 M = args.M,
                                 multiple_decoder = args.multiple_decoder,
                                 multiple_encoder = args.multiple_encoder,
+                                multiple_hyperprior = args.multiple_hyperprior,
                                 dim_chunk = args.dim_chunk,
                                 division_dimension = args.division_dimension,
                                 lmbda_list = lmbda_list,

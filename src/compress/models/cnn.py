@@ -130,7 +130,7 @@ class WACNN(CompressionModel):
         )
 
         self.entropy_bottleneck = EntropyBottleneck(self.N)
-        self.gaussian_conditional = GaussianConditional(None)
+        self.gaussian_conditional = GaussianConditional(None) #dddd
 
 
     def update(self, scale_table=None, force=False):

@@ -343,8 +343,14 @@ def compress_with_ac(model,  filelist, device, epoch, pr_list = [0.05,0.04,0.03,
                     
                     data_string_hype = data["strings"][1]
                     bpp_hype = sum(len(s) for s in data_string_hype) * 8.0 / num_pixels
+
+                    if len(data["strings"])> 2:
+                        data_string_prog = data["strings"][1]
+                        bpp_prog = sum(len(s) for s in data_string_prog) * 8.0 / num_pixels                       
                     
-                    bpp = bpp_hype + bpp_scale 
+                        bpp = bpp_hype + bpp_scale + bpp_prog 
+                    else:
+                        bpp = bpp_hype + bpp_scale
 
                 else:
                     if p != 0:

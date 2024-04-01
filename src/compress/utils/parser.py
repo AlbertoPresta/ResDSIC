@@ -58,7 +58,7 @@ def parse_args(argv):
     parser.add_argument("-n","--num-workers",type=int,default=8,help="Dataloaders threads (default: %(default)s)",)
     #dddd
 
-    parser.add_argument("--lambda_list",dest="lmbda_list", nargs='+', type=float, default = [ 0.0035, 0.050])
+    parser.add_argument("--lambda_list",dest="lmbda_list", nargs='+', type=float, default = [ 0.005, 0.050])
     parser.add_argument("--division_dimension", nargs='+', type=int, default = [320, 640])
     parser.add_argument("--inner_dimensions", nargs='+', type=int, default = [192, 192])
     parser.add_argument("--list_quality", nargs='+', type=int, default = [0])
@@ -89,6 +89,7 @@ def parse_args(argv):
     parser.add_argument("--save", action="store_true", default=True, help="Save model to disk")
     parser.add_argument("--multiple_decoder", action="store_true", help="Use cuda")
     parser.add_argument("--multiple_encoder", action="store_true", help="Use cuda")
+    parser.add_argument("--multiple_hyperprior", action="store_true", help="Use cuda")
 
 
     parser.add_argument("-see","--shared_entropy_estimation", action="store_true", help="Use cuda")
@@ -103,7 +104,6 @@ def parse_args(argv):
     parser.add_argument("--checkpoint", type=str, default = "none")#/scratch/ResDSIC/models/zero__multi__0.0035_0.05_cond_ind_two-levels_Trueconcatenation_False/_very_best.pth.tar
     parser.add_argument("--checkpoint_base", type=str, default =  "/scratch/base_devil/weights/q2/model.pth",help="Path to a checkpoint") #"/scratch/universal-dic/weights/q2/model.pth"
     parser.add_argument("--tester", action="store_true", help="use common lrp for progressive")
-    parser.add_argument("--only_progressive", action="store_true", help="onlu progressive") #rrrrr
-    parser.add_argument("--support_progressive_slices",default=2,type=int,help="support_progressive_slices",)
+    parser.add_argument("--support_progressive_slices",default=4,type=int,help="support_progressive_slices",) #ssss
     args = parser.parse_args(argv)
     return args

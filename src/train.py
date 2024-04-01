@@ -194,17 +194,15 @@ def main(argv):
     elif args.checkpoint_base != "none":
 
         base_checkpoint = torch.load(args.checkpoint_base,map_location=device)
-        new_check = initialize_model_from_pretrained(base_checkpoint)
+        new_check = initialize_model_from_pretrained(base_checkpoint, args.multiple_hyperprior)
         net.load_state_dict(new_check,strict = False)
         net.update() 
         if args.freeze_base:
-            net.freeze_base_net()      
+            net.freeze_base_net(args.multiple_hyperprior)      
     
 
 
-    if args.only_progressive:
-        print("entro su freezer la base!")
-        net.unfreeze_only_progressive()
+
 
     best_loss = float("inf")
     counter = 0
@@ -282,11 +280,11 @@ def main(argv):
             list_pr = net.quality_list
             mask_pol = net.mask_policy
         elif "progressive" in args.model and "mask" not in args.model:
-            list_pr = [0,1.5,2.5,5,6.5,7.5,10]
+            list_pr = [0,1.5,2,7,10]
             mask_pol = "point-based-std"
         
         if "channel" in args.model:
-            list_pr = [0,1,2,3,4,5,6,7,8,9,10]
+            list_pr = [0,1,3,5,7,10]
             mask_pol = "point-based-std"
         
         if "progressive_enc" in args.model: #ddd
@@ -313,7 +311,7 @@ def main(argv):
         is_best = loss < best_loss
         best_loss = min(loss, best_loss)
 
-        if epoch%5==0 or is_best:
+        if True: #epoch%5==0 or is_best:
             net.update()
             #net.lmbda_list
             bpp, psnr,_ = compress_with_ac(net,  
@@ -368,7 +366,7 @@ def main(argv):
         name_folder = check + "_" + "_multi_" + stringa_lambda + "_"\
               + args.model + "_" + str(args.N) + "_" + str(args.division_dimension) + "_" + \
              str(args.support_progressive_slices) + "_" + args.mask_policy +  "_" +    str(args.lrp_prog) + str(args.joiner_policy) + \
-            "_" + str(args.multiple_encoder) + "_" + str(args.multiple_decoder)
+            "_" + str(args.multiple_encoder) + "_" + str(args.multiple_decoder) + "_" + str(args.multiple_hyperprior)
         cartella = os.path.join(args.save_path,name_folder)
 
 
