@@ -256,7 +256,6 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
             p.requires_grad = False 
         
         if multiple_hyperprior:
-
             
             for p in self.h_scale_s[0].parameters():
                 p.requires_grad = False 
@@ -766,9 +765,6 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
         return {"x_hat": x_hat}   
 
 
-
-
-
     def forward_single_quality(self,x, quality, mask_pol = None, training = False):
 
         mask_pol = self.mask_policy if mask_pol is None else mask_pol
@@ -823,6 +819,7 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
             return {
                 "x_hat": x_hat,
                 "likelihoods": {"y": y_likelihoods,"z": z_likelihoods},
+                "y_hat":y_hat
 
             }             
 
@@ -839,11 +836,6 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
                                                     current_index,
                                                     y_hat_slices_quality) 
             
-
-            
-
-
-           
             mean_support = torch.cat([latent_means[:,self.division_dimension[0]:]] + support_slices, dim=1)
             scale_support = torch.cat([latent_scales[:,self.division_dimension[0]:]] + support_slices, dim=1)  
 
@@ -890,7 +882,8 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
 
         return {
             "x_hat": x_hat,
-            "likelihoods": {"y": y_likelihoods,"z": z_likelihoods}
+            "likelihoods": {"y": y_likelihoods,"z": z_likelihoods},
+            "y_hat":y_hat
 
         }     
 

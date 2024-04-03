@@ -14,7 +14,7 @@ from torch.utils.data import DataLoader
 from torchvision import transforms
 from compress.training.loss import ScalableDistilledDistortionLoss, ScalableDistilledRateDistortionLoss
 from compress.datasets.utils import ImageFolder, TestKodakDataset
-from compress.models import get_model, models
+from compress.models import get_model, models, initialize_model_from_pretrained
 #from compress.zoo import models
 import os
 
@@ -56,16 +56,13 @@ def configure_optimizers(net, args):
     }
 
 
-
-
-
     # Make sure we don't have an intersection of parameters
     params_dict = dict(net.named_parameters())
     inter_params = parameters & aux_parameters
     union_params = parameters | aux_parameters
 
     assert len(inter_params) == 0
-    assert len(union_params) - len(params_dict.keys()) == 0
+    #assert len(union_params) - len(params_dict.keys()) == 0
 
     optimizer = optim.Adam(
         (params_dict[n] for n in sorted(parameters)),
@@ -161,29 +158,19 @@ def main(argv):
         print("Loading", args.checkpoint)
         checkpoint = torch.load(args.checkpoint, map_location=device)
         last_epoch = 0 # checkpoint["epoch"] + 1
-        #print("madonna troai")
         for k in list(checkpoint["state_dict"]):
             if "entropy" in k or "gaussian" in k:
                 print(k)
         #net.update()
         net.load_state_dict(checkpoint["state_dict"], strict=True)
     elif args.checkpoint_base != "none":
-        print("riparto da un modello base------")
-        print("Loading", args.checkpoint_base)
-        checkpoint = torch.load(args.checkpoint_base, map_location=device)
 
-
-        if args.multiple_decoder:
-            for keys in list(checkpoint.keys()):
-                if "g_s" in keys:
-                    nuova_chave = "g_s.0"  +keys[3:]
-                    checkpoint[nuova_chave] = checkpoint[keys]
-
-        last_epoch = 0 # checkpoint["epoch"] + 1
-
-        net.load_state_dict(checkpoint,strict = False)  #dddd
-        print("ho fatto il salvataggio!!!")#dddd
-        net.update()       
+        base_checkpoint = torch.load(args.checkpoint_base,map_location=device)
+        new_check = initialize_model_from_pretrained(base_checkpoint, args.multiple_hyperprior)
+        net.load_state_dict(new_check,strict = False)
+        net.update() 
+        if args.freeze_base:
+            net.freeze_base_net(args.multiple_hyperprior)     
         
     optimizer, aux_optimizer = configure_optimizers(net, args)
     lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, "min", factor=0.3, patience=args.patience)
@@ -227,9 +214,6 @@ def main(argv):
     
 
 
-    if args.only_progressive:
-        print("entro su freezer la base!")
-        net.unfreeze_only_progressive()
 
     best_loss = float("inf")
     counter = 0
@@ -309,7 +293,7 @@ def main(argv):
             mask_pol = "point-based-std"
         
         if "channel" in args.model:
-            list_pr = [0,1,2,3,4,5,6,7,8,9,10]
+            list_pr = [0,1,2,3,5,7,10]
             mask_pol = "point-based-std"
         
         if "progressive_enc" in args.model: #ddd
@@ -371,7 +355,8 @@ def main(argv):
 
 
         name_folder = check + "_" +  str(args.type_loss) +  "_" + "_multi_" + stringa_lambda + "_" + args.model + "_" + str(args.division_dimension) + "_" + \
-             str(args.support_progressive_slices) + "_" + args.mask_policy +  "_" +    str(args.lrp_prog) + str(args.joiner_policy) + "_" + str(args.sampling_training)
+             str(args.support_progressive_slices) + "_" + args.mask_policy +  "_" +  \
+            str(args.lrp_prog) + str(args.joiner_policy) + "_" + str(args.sampling_training) + str(args.freeze_base)
         cartella = os.path.join(args.save_path,name_folder)
 
 
