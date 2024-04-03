@@ -13,5 +13,6 @@
 # limitations under the License.
 
 from .utils import ImageFolder
+from .video import VideoFolder
 
 __all__ = ["ImageFolder"]

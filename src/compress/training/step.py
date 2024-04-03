@@ -3,6 +3,7 @@ import wandb
 from compress.utils.functions import AverageMeter, read_image
 import math 
 import random
+import torch.nn as nn
 from torch.nn.functional import mse_loss
 from pytorch_msssim import ms_ssim
 import torch.nn.functional as F 
@@ -17,6 +18,13 @@ def compute_msssim(a, b):
     return ms_ssim(a, b, data_range=1.).item()
 
 
+def compute_aux_loss(aux_list):
+    aux_loss_sum = 0
+    for aux_loss in aux_list:
+        aux_loss_sum += aux_loss
+    return aux_loss_sum
+
+
 def train_one_epoch(model, 
                     criterion, 
                     train_dataloader,
@@ -26,7 +34,8 @@ def train_one_epoch(model,
                       counter,
                       sampling_training = False,
                       list_quality = None,
-                      clip_max_norm = 1.0):
+                      clip_max_norm = 1.0,
+                      video = False):
     model.train()
     device = next(model.parameters()).device
 
@@ -60,7 +69,7 @@ def train_one_epoch(model,
 
         out_criterion["loss"].backward()
         if aux_optimizer is not None:
-            aux_loss = model.aux_loss()
+            aux_loss = model.aux_loss() if video is False else compute_aux_loss(model.aux_loss())
             aux_loss.backward()
             aux_optimizer.step()
 
@@ -73,7 +82,9 @@ def train_one_epoch(model,
         loss.update(out_criterion["loss"].clone().detach())
         mse_loss.update(out_criterion["mse_loss"].mean().clone().detach())
         bpp_loss.update(out_criterion["bpp_loss"].clone().detach())
-        bpp_scalable.update(out_criterion["bpp_scalable"].clone().detach())
+        if "bpp_scalable" in list(out_criterion.keys()):
+            bpp_scalable.update(out_criterion["bpp_scalable"].clone().detach())
+
         #bpp_main.update(out_criterion["bpp_base"].clone().detach())
 
         if "kd_enh" in list(out_criterion.keys()):
@@ -87,10 +98,16 @@ def train_one_epoch(model,
             "train_batch/loss": out_criterion["loss"].clone().detach().item(),
             "train_batch/bpp_total": out_criterion["bpp_loss"].clone().detach().item(),
             "train_batch/mse":out_criterion["mse_loss"].mean().clone().detach().item(),
-            #"train_batch/bpp_base":out_criterion["bpp_base"].clone().detach().item(),
-            "train_batch/bpp_progressive":out_criterion["bpp_scalable"].clone().detach().item(),
         }
         wandb.log(wand_dict)
+
+        if "bpp_scalable" in list(out_criterion.keys()):
+            wand_dict = {
+                "train_batch": counter,
+                "train_batch/bpp_progressive":out_criterion["bpp_scalable"].clone().detach().item(),
+            }
+            wandb.log(wand_dict)
+
 
         if "kd_enh" in list(out_criterion.keys()):
             wand_dict = {
@@ -127,14 +144,19 @@ def train_one_epoch(model,
         "train/bpp": bpp_loss.avg,
         "train/mse": mse_loss.avg,
         "train/bpp_progressive":bpp_scalable.avg,
-       # "train/bpp_base":bpp_main.avg,
-
         }
-        
     wandb.log(log_dict)
+
+    if "bpp_scalable" in list(out_criterion.keys()):
+        log_dict = {
+            "train":epoch,
+            "train/bpp_progressive":bpp_scalable.avg,
+            }
+        wandb.log(log_dict) 
+
     return counter
 
-import torch.nn as nn
+
 def criterion_test(output,target):
     mse = nn.MSELoss()
     N, _, H, W = target.size()
@@ -169,8 +191,7 @@ def valid_epoch(epoch, test_dataloader,criterion, model, pr_list = [0.05], mask_
         for d in test_dataloader:
 
             d = d.to(device)
-
-            for j,p in enumerate(pr_list):
+            for _,p in enumerate(pr_list):
                 if progressive is False:
                     out_net = model(d, quality = p, mask_pol = mask_pol, training = False)
                     out_criterion = criterion(out_net, d, lmbda = p)
@@ -232,9 +253,7 @@ def test_epoch(epoch, test_dataloader,criterion, model, pr_list, mask_pol = None
 
     with torch.no_grad():
         for d in test_dataloader:
-
             d = d.to(device)
-
             for j,p in enumerate(pr_list):
                 if progressive is False:
                     out_net = model(d,  p, mask_pol = mask_pol,  training = False)

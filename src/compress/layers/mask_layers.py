@@ -5,11 +5,10 @@ import torch
 import torch.nn as nn
 from compressai.ops import LowerBound
 from compress.layers import conv3x3, subpel_conv3x3
-from ..models.utils import conv,deconv
 
 class Mask(nn.Module):
 
-    def __init__(self, mask_policy, scalable_levels,M):
+    def __init__(self, mask_policy, scalable_levels,M = 192):
         super().__init__()
 
         self.mask_policy = mask_policy 

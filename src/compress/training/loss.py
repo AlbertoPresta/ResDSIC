@@ -218,7 +218,7 @@ class ScalableDistilledRateDistortionLoss(nn.Module):
             out["bpp_loss"] = out["bpp_scalable"] +  out["bpp_base"] + batch_size_recon*(out["bpp_hype"])
         else: 
             out["bpp_base"] = (1 - self.gamma)*kd_enh + self.gamma*(torch.log(likelihoods["y"].squeeze(0)).sum())/denominator
-            out["bpp_scalable"] = (torch.log(likelihoods["y"][:,1:,:,:,:].squeeze(0)).sum())/denominator
+            out["bpp_scalable"] = ((torch.log(likelihoods["y"]).sum()).sum()/denominator)*0.0
             out["bpp_loss"] = out["bpp_scalable"] + out["bpp_base"] + batch_size_recon*(out["bpp_hype"])
 
         out["loss"] = out["bpp_loss"] + self.weight*(lmbda*out["mse_loss"]).mean() + out["kd_enh"]*(lmbda[-1]*0.5)
@@ -260,8 +260,6 @@ class ScalableDistilledDistortionLoss(nn.Module):
         batch_size_images, _, H, W = target.size()
         out = {}
         num_pixels = batch_size_images * H * W
-
-
         # first of all 
         #print("come prima cosa valutiamo il rapporto tra mse e kd, se sono sulla stessa scala")
         #print("target shape: ",target.shape)
@@ -309,7 +307,7 @@ class ScalableDistilledDistortionLoss(nn.Module):
             out["bpp_loss"] = out["bpp_scalable"] +  out["bpp_base"] + batch_size_recon*(out["bpp_hype"])
         else: 
             out["bpp_base"] = torch.log(likelihoods["y"].squeeze(0)).sum()/denominator
-            out["bpp_scalable"] = (torch.log(likelihoods["y"][:,1:,:,:,:].squeeze(0)).sum())/denominator
+            out["bpp_scalable"] = ((torch.log(likelihoods["y"]).sum()).sum()/denominator)*0.0
             out["bpp_loss"] = out["bpp_scalable"] + out["bpp_base"] + batch_size_recon*(out["bpp_hype"])
 
         #out["loss"] = out["bpp_loss"] + self.weight*(lmbda*out["mse_loss"]).mean() + out["kd_enh"]*(lmbda[-1]*0.5)

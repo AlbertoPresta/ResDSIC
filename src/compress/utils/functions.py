@@ -1,6 +1,4 @@
-import argparse
-from compress.zoo import models
-from datetime import datetime
+
 from os.path import join   
 from PIL import Image
 from torchvision import transforms

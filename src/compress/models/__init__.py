@@ -25,6 +25,7 @@ from .scalable.CHP_res import ChannelProgresssiveWACNN
 from .scalable.progressive_enc import ProgressiveEncWACNN
 from .tcm.scalable import ResTCM
 from .scalable.utils import initialize_model_from_pretrained
+from .video.google import ScaleSpaceFlow
 
 
 models = {
@@ -43,7 +44,7 @@ models = {
 }
 
 
-
+video_models = {"ssf":ScaleSpaceFlow}
 
 def get_model(args,device, lmbda_list):
 
