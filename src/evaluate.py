@@ -20,6 +20,24 @@ palette = sns.color_palette("tab10")
 torch.backends.cudnn.deterministic=True
 torch.backends.cudnn.benchmark=False
 
+from collections import OrderedDict
+
+def replace_keys(checkpoint):
+    # Creiamo un nuovo OrderedDict con le chiavi modificate all'interno di un ciclo for
+    nuovo_ordered_dict = OrderedDict()
+    for chiave, valore in checkpoint.items():
+        if "g_a_enh." in chiave: 
+            
+            nuova_chiave = chiave.replace("g_a_enh.", "g_a.1.")
+            nuovo_ordered_dict[nuova_chiave] = valore
+        elif "g_a." in chiave: 
+            nuova_chiave = chiave.replace("g_a.", "g_a.0.")
+            nuovo_ordered_dict[nuova_chiave] = valore  
+        else: 
+            nuovo_ordered_dict[chiave] = valore   
+    return nuovo_ordered_dict      
+
+
 def main(argv):
     args = parse_args_eval(argv)
     print(args)
@@ -27,17 +45,27 @@ def main(argv):
 
     print("Loading", args.checkpoint)
     checkpoint = torch.load(args.checkpoint, map_location=device)
-    #new_args = checkpoint["args"]
+    new_args = checkpoint["args"]
 
-    #if "multiple_encoder" not in new_args:
-    #    new_args.multiple_encoder = False
+    if "multiple_encoder" not in new_args:
+        new_args.multiple_encoder = False
+    else: 
+        print("l'args ha il multiple encoder!")
 
-    #lmbda_list = new_args.lmbda_list
-    #wandb.init( config= new_args, project="EVAL", entity="albipresta")   
-    wandb.init( config= args, project="EVAL", entity="albipresta")  
-    #if new_args.seed is not None:
-    #    torch.manual_seed(args.seed)
-    #    random.seed(args.seed)
+
+
+    if "multiple_hyperprior" not in new_args:
+        new_args.multiple_hyperprior = False
+    else: 
+        print("l'args ha il multiple_hyperprior!")
+
+
+    lmbda_list = new_args.lmbda_list
+    wandb.init( config= new_args, project="EVAL", entity="albipresta")   
+
+    if new_args.seed is not None:
+        torch.manual_seed(new_args.seed)
+        random.seed(new_args.seed)
     
 
     test_transforms = transforms.Compose(
@@ -48,40 +76,19 @@ def main(argv):
     filelist = test_dataset.image_path
 
 
-    #net = get_model(new_args,device, lmbda_list)
-    #net = get_model(new_args,device, lmbda_list)
-    net = WACNN()
-    #net.load_state_dict(checkpoint["state_dict"],strict = True) #dddfffffffff
-    net.load_state_dict(checkpoint,strict = True)
+
+
+    net = get_model(new_args,device, lmbda_list)
+
+    #net = WACNN()
+    
+    
+    checkpoint_model = replace_keys(checkpoint["state_dict"])
+    net.load_state_dict(checkpoint_model ,strict = True) #dddfffffffff
+    #net.load_state_dict(checkpoint,strict = True)
     net.update() 
 
-
     
-    net_2 = ChannelProgresssiveWACNN()
-    #check = net_2.state_dict()
-
-    new_check = initialize_model_from_pretrained(checkpoint)
-
-    for i,c in enumerate(list(new_check.keys())):
-        print(i," ",c)
-
-    net_2.load_state_dict(new_check,strict = False)
-
-    
-
-    parametri_uguali = all(torch.equal(p1, p2) for p1, p2 in zip(net_2.g_s[0].parameters(), net.g_s.parameters())) #ddd
-    print("controllare se sono uguali: ",parametri_uguali)
-    parametri_uguali = all(torch.equal(p1, p2) for p1, p2 in zip(net_2.g_a[0].parameters(), net.g_a.parameters()))
-    print("controllare se sono uguali: ",parametri_uguali)
-    parametri_uguali = all(torch.equal(p1, p2) for p1, p2 in zip(net_2.cc_mean_transforms.parameters(), net.cc_mean_transforms.parameters()))
-    print("controllare se sono uguali: ",parametri_uguali)
-    parametri_uguali = all(torch.equal(p1, p2) for p1, p2 in zip(net_2.cc_scale_transforms.parameters(), net.cc_scale_transforms.parameters()))
-    print("controllare se sono uguali: ",parametri_uguali)
-    #for c in list(check.keys()):
-    #    if ("lrp_transform" in c or "cc" in c or "g_" in c) and "prog" not in c:
-    #        print(c, " our")  
-
-    """
     if new_args.model in ("progressive","progressive_enc","progressive_res","progressive_maks","progressive_res","channel"):
         progressive = True
     else:
@@ -130,23 +137,44 @@ def main(argv):
     bpp_res["base"] =  [0.127,0.199,0.309,0.449,0.649,0.895]
 
     
-    bpp_res["tri_planet_23"] = [0.19599018399677576, 0.2160843743218315, 
-                                 0.23966546706211406, 0.2649169921874998, 0.290478022411616, 
-                                     0.31530394377531823, 0.6184760199652779, 0.3386248727130074, 
+    bpp_res["tri_planet_23"] = [0.19599018399677576, 
+                                0.2160843743218315, 
+                                 0.23966546706211406, 
+                                 0.2649169921874998,
+                                 0.290478022411616, 
+                                0.31530394377531823,
+                                0.3386248727130074,
+                                0.3715,
+                                0.4549,
+                                0.503,
                                 0.6184760199652779, 
-                                     0.622775607638889, 0.6264399775752316, 0.629531012641059,
-                                       0.6320909288194444, 0.6358637734064978, 0.6489329396942514, 
-                                       0.6606713189019093]
+                                0.622775607638889, 
+                                0.6264399775752316, 
+                                0.629531012641059,
+                                0.6320909288194444, 
+                                0.6358637734064978, 
+                                0.6489329396942514, 
+                                0.6606713189019093]
 
     
-    psnr_res["tri_planet_23"] = [29.966779946152272, 30.245813808118623, 
+    psnr_res["tri_planet_23"] = [29.966779946152272, 
+                                 30.245813808118623, 
                                  30.57321667041242, 
-                                 30.91983179476929, 31.261272444242884,
-                                  31.581467860369358, 35.35794463342364, 31.871966073681232, 
-                                      35.35794463342364,
-                                        35.387717967053526, 35.41157437546917, 35.43059575484415,
-                                        35.445527093923985, 35.46594985204121, 35.526434249041614, 
-                                        35.58748106931754]
+                                 30.91983179476929,
+                                 31.261272444242884,
+                                  31.581467860369358, 
+                                  31.871966073681232,
+                                  32.4049,
+                                  33.556,
+                                  34.184, 
+                                35.35794463342364,
+                                    35.387717967053526, 
+                                    35.41157437546917, 
+                                    35.43059575484415,
+                                    35.445527093923985, 
+                                    35.46594985204121, 
+                                    35.526434249041614, 
+                                    35.58748106931754]
 
         
     bpp_res["tri_planet_22"] = [0.660875109,
@@ -210,7 +238,7 @@ def main(argv):
 
     plot_decoded_time(bpp_res,decoded_time,0,eest="compression")
 
-    """
+    
         
 
 

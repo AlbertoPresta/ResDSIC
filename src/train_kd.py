@@ -316,7 +316,7 @@ def main(argv):
         if epoch%5==0 or is_best:
             net.update()
             #net.lmbda_list
-            bpp, psnr = compress_with_ac(net,  
+            bpp, psnr,_ = compress_with_ac(net,  
                                          filelist, 
                                          device,
                                            epoch = epoch_enc, 

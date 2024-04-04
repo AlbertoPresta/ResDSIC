@@ -5,7 +5,7 @@ from compress.models import models, video_models
 
 def parse_args_eval(argv):
     parser = argparse.ArgumentParser(description="Example training script.") #dddd
-    parser.add_argument("--checkpoint", type=str, default = "/scratch/base_devil/weights/q2/model.pth",help="Path to a checkpoint")#/scratch/ResDSIC/models/res2/_very_best.pth.tar zero__multi__0.005_0.05_progressive_scalable_res_False_False#/scratch/ResDSIC/models/zero__multi__0.0035_0.05_cond_ind_two-levels_Trueconcatenation_False/_very_best.pth.tar
+    parser.add_argument("--checkpoint", type=str, default = "/scratch/ResDSIC/models/res_m4_me_md/_very_best.pth.tar",help="Path to a checkpoint")#/scratch/ResDSIC/models/res2/_very_best.pth.tar zero__multi__0.005_0.05_progressive_scalable_res_False_False#/scratch/ResDSIC/models/zero__multi__0.0035_0.05_cond_ind_two-levels_Trueconcatenation_False/_very_best.pth.tar
     args = parser.parse_args(argv)
     return args
 
@@ -130,6 +130,6 @@ def parse_args(argv):
     parser.add_argument("--checkpoint", type=str, default = "none")#/scratch/ResDSIC/models/zero__multi__0.0035_0.05_cond_ind_two-levels_Trueconcatenation_False/_very_best.pth.tar
     parser.add_argument("--checkpoint_base", type=str, default =  "/scratch/base_devil/weights/q2/model.pth",help="Path to a checkpoint") #"/scratch/universal-dic/weights/q2/model.pth"
     parser.add_argument("--tester", action="store_true", help="use common lrp for progressive")
-    parser.add_argument("--support_progressive_slices",default=2,type=int,help="support_progressive_slices",) #ssss
+    parser.add_argument("--support_progressive_slices",default=4,type=int,help="support_progressive_slices",) #ssss
     args = parser.parse_args(argv)
     return args

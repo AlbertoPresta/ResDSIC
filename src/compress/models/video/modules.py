@@ -5,6 +5,7 @@ from compressai.entropy_models import EntropyBottleneck, GaussianConditional
 from compressai.layers import QReLU
 from compressai.ops import quantize_ste
 from ..base import CompressionModel
+from compress.layers.mask_layers import Mask
 
 class Encoder(nn.Sequential):
     def __init__(self, in_planes: int, mid_planes: int = 128, out_planes: int = 192, factor:int = 1):
@@ -78,6 +79,8 @@ class Hyperprior(CompressionModel):
         self.hyper_decoder_mean = HyperDecoder(planes, mid_planes, planes*factor)
         self.hyper_decoder_scale = HyperDecoderWithQReLU(planes, mid_planes, planes*factor)
         self.gaussian_conditional = GaussianConditional(None)
+        
+        self.planes = planes
 
     def forward(self, y):
         z = self.hyper_encoder(y)
@@ -85,6 +88,7 @@ class Hyperprior(CompressionModel):
 
         scales = self.hyper_decoder_scale(z_hat)
         means = self.hyper_decoder_mean(z_hat)
+        # mettere la maschera qua!!!!
         _, y_likelihoods = self.gaussian_conditional(y, scales, means)
         y_hat = quantize_ste(y - means) + means
         return y_hat, {"y": y_likelihoods, "z": z_likelihoods}
@@ -114,3 +118,67 @@ class Hyperprior(CompressionModel):
         y_hat = self.gaussian_conditional.decompress(strings[0], indexes, z_hat.dtype, means)
 
         return y_hat
+    
+
+
+class HyperpriorMasked(Hyperprior):
+    def __init__(self, 
+                 planes: int = 192,
+                 mid_planes: int = 192,
+                 factor:int = 2, 
+                 mask_policy = "two-levels", 
+                 scalable_levels = 2):
+        super().__init__(planes = planes, mid_planes=mid_planes,factor=factor)
+        
+        self.mask_policy = mask_policy
+        self.scalable_levels = scalable_levels
+        self.masking = Mask(self.mask_policy,scalable_levels = self.scalable_levels)
+    
+
+    def forward(self, y, quality, mask_pol = None, training = True,y_b = None):
+        
+        
+
+        mask_pol  = self.mask_policy if mask_pol is None else mask_pol
+        
+        z = self.hyper_encoder(y)
+        z_hat, z_likelihoods = self.entropy_bottleneck(z, training = training)
+
+        scales = self.hyper_decoder_scale(z_hat)
+        means = self.hyper_decoder_mean(z_hat)
+        # mettere la maschera qua!!!!
+        
+        if quality == 0: # non maschero! 
+            _, y_likelihoods = self.gaussian_conditional(y, scales, means)
+            y_hat = quantize_ste(y - means) + means
+        return y_hat, z_hat, {"y": y_likelihoods, "z": z_likelihoods}
+
+    def compress(self, y):
+        z = self.hyper_encoder(y)
+
+        z_string = self.entropy_bottleneck.compress(z)
+        z_hat = self.entropy_bottleneck.decompress(z_string, z.size()[-2:])
+
+        scales = self.hyper_decoder_scale(z_hat)
+        means = self.hyper_decoder_mean(z_hat)
+
+        indexes = self.gaussian_conditional.build_indexes(scales)
+        y_string = self.gaussian_conditional.compress(y, indexes, means)
+        y_hat = self.gaussian_conditional.quantize(y, "dequantize", means)
+
+        return y_hat, {"strings": [y_string, z_string], "shape": z.size()[-2:]}
+
+    def decompress(self, strings, shape):
+        assert isinstance(strings, list) and len(strings) == 2
+        z_hat = self.entropy_bottleneck.decompress(strings[1], shape)
+
+        scales = self.hyper_decoder_scale(z_hat)
+        means = self.hyper_decoder_mean(z_hat)
+        indexes = self.gaussian_conditional.build_indexes(scales)
+        y_hat = self.gaussian_conditional.decompress(strings[0], indexes, z_hat.dtype, means)
+
+        return y_hat   
+    
+    
+
+    
