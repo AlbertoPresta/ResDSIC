@@ -41,8 +41,22 @@ class HyperEncoder(nn.Sequential):
             conv(mid_planes, mid_planes, kernel_size=5, stride=2),
         )
 
+class HyperEncoder(nn.Sequential):
+    def __init__(
+        self, in_planes: int = 192, mid_planes: int = 192, out_planes: int = 192
+        ):
+        super().__init__(
+            conv(in_planes, mid_planes, kernel_size=5, stride=2),
+            nn.ReLU(inplace=True),
+            conv(mid_planes, mid_planes, kernel_size=5, stride=2),
+            nn.ReLU(inplace=True),
+            conv(mid_planes, mid_planes, kernel_size=5, stride=2),
+        )
+
 class HyperDecoder(nn.Sequential):
-    def __init__(self, in_planes: int = 192, mid_planes: int = 192, out_planes: int = 192):
+    def __init__(
+        self, in_planes: int = 192, mid_planes: int = 192, out_planes: int = 192
+        ):
         super().__init__(
             deconv(in_planes, mid_planes, kernel_size=5, stride=2),
             nn.ReLU(inplace=True),
@@ -50,6 +64,7 @@ class HyperDecoder(nn.Sequential):
             nn.ReLU(inplace=True),
             deconv(mid_planes, out_planes, kernel_size=5, stride=2),
         )
+
 
 class HyperDecoderWithQReLU(nn.Module):
     def __init__(self, in_planes: int = 192, mid_planes: int = 192, out_planes: int = 192):
@@ -75,7 +90,7 @@ class Hyperprior(CompressionModel):
     def __init__(self, planes: int = 192, mid_planes: int = 192,factor:int = 2):
         super().__init__()
         self.entropy_bottleneck = EntropyBottleneck(planes)
-        self.hyper_encoder = HyperEncoder(planes*factor, mid_planes, planes)
+        self.hyper_encoder = HyperEncoder(planes, mid_planes, planes)
         self.hyper_decoder_mean = HyperDecoder(planes, mid_planes, planes*factor)
         self.hyper_decoder_scale = HyperDecoderWithQReLU(planes, mid_planes, planes*factor)
         self.gaussian_conditional = GaussianConditional(None)
@@ -153,7 +168,8 @@ class HyperpriorMasked(Hyperprior):
             y_hat = quantize_ste(y - means) + means
         return y_hat, z_hat, {"y": y_likelihoods, "z": z_likelihoods}
 
-    def compress(self, y):
+    def compress(self, y,quality,mask_pol):
+        y_b, y_p = y.chunck(2,1)
         z = self.hyper_encoder(y)
 
         z_string = self.entropy_bottleneck.compress(z)
@@ -162,11 +178,26 @@ class HyperpriorMasked(Hyperprior):
         scales = self.hyper_decoder_scale(z_hat)
         means = self.hyper_decoder_mean(z_hat)
 
-        indexes = self.gaussian_conditional.build_indexes(scales)
-        y_string = self.gaussian_conditional.compress(y, indexes, means)
-        y_hat = self.gaussian_conditional.quantize(y, "dequantize", means)
+        scales_b, scales_p = scales.chuck(2,1)
+        means_b, means_p = means.chuck(2,1)
 
-        return y_hat, {"strings": [y_string, z_string], "shape": z.size()[-2:]}
+        indexes = self.gaussian_conditional.build_indexes(scales_b)
+        y_string = self.gaussian_conditional.compress(y_b, indexes, means_b)
+        y_hat_b = self.gaussian_conditional.quantize(y_b, "dequantize", means)
+        if quality == 0: 
+            return y_hat_b, {"strings": [y_string, z_string], "shape": z.size()[-2:]}
+        
+        mask = self.masking(scales if self.double_dim else scales_p, 
+                                                    mask_pol = mask_pol, 
+                                                    quality = quality) 
+            
+        indexes = self.gaussian_conditional.build_indexes(scales_p*mask) 
+        y_string_prog  = self.gaussian_conditional.compress((y_p - means_p)*mask, indexes)
+        y_hat_p = self.gaussian_conditional.decompress(y_string_prog, indexes)
+        y_hat_p = y_hat_p + means_p
+        y_hat = y_hat_p + y_hat_b
+
+        return [y_hat_b,y_hat], {"strings": [y_string,y_string_prog, z_string], "shape": z.size()[-2:]}
 
     def decompress(self, strings, shape):
         assert isinstance(strings, list) and len(strings) == 2

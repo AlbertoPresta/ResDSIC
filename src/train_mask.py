@@ -8,10 +8,10 @@ import time
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from   compress.training.step import train_one_epoch, valid_epoch, test_epoch, compress_with_ac
+from   compress.training.image.step import train_one_epoch, valid_epoch, test_epoch, compress_with_ac
 from torch.utils.data import DataLoader
 from torchvision import transforms
-from compress.training.loss import  DistortionLoss, ScalableRateDistortionLoss, MaskRateDistortionLoss
+from compress.training.image.loss import  DistortionLoss, ScalableRateDistortionLoss, MaskRateDistortionLoss
 from compress.datasets.utils import ImageFolder, TestKodakDataset
 from compress.models import get_model
 import os

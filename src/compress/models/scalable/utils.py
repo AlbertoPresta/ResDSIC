@@ -3,7 +3,8 @@ import numpy as np
 from collections import OrderedDict
 
 
-def initialize_model_from_pretrained( checkpoint,multiple_hyperprior):
+def initialize_model_from_pretrained( checkpoint,multiple_hyperprior, 
+                                     checkpoint_enh = None):
 
     sotto_ordered_dict = OrderedDict()
 
@@ -12,6 +13,7 @@ def initialize_model_from_pretrained( checkpoint,multiple_hyperprior):
 
             nuova_stringa = "g_s.0." + c[4:]
             sotto_ordered_dict[nuova_stringa] = checkpoint[c]
+
         elif "g_a" in c: 
             nuova_stringa = "g_a.0." + c[4:]
             sotto_ordered_dict[nuova_stringa] = checkpoint[c]
@@ -37,6 +39,21 @@ def initialize_model_from_pretrained( checkpoint,multiple_hyperprior):
     for c in list(sotto_ordered_dict.keys()):
         if "h_a" in c:
             sotto_ordered_dict.pop(c)
+
+
+    if checkpoint_enh is not None:
+        print("prendo anche il secondo modello enhanced")
+        for c in list(checkpoint_enh.keys()):
+            if "g_s" in c: 
+                nuova_stringa = "g_s.1." + c[4:]
+                sotto_ordered_dict[nuova_stringa] = checkpoint_enh[c]
+
+            else:
+                continue
+
+
+
+
     return sotto_ordered_dict
     
 

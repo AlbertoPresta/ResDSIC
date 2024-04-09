@@ -161,9 +161,9 @@ class ScalableScaleSpaceFlow(ScaleSpaceFlow):
         y_hat_b  = quantize_ste(y_b - means_b) + means_b
             
 
-        mask = funct.compute_mask(scales if self.double_dim else scales_p, 
+        mask = funct.masking(scales if self.double_dim else scales_p, 
                                                 mask_pol = mask_pol, 
-                                                quality = quality) 
+                                                quality = quality[-1]) 
         
         _, y_likelihoods_p = funct.gaussian_conditional((y_p - means_p)*mask,
                                                         scales_p*mask)
@@ -235,7 +235,7 @@ class ScalableScaleSpaceFlow(ScaleSpaceFlow):
         y_likelihoods_motion_p = likelihoods_motion[2]
         
         motion_info_b = self.motion_decoder[0](y_hat_motion_b) if self.multiple_flow_decoder \
-                        else self.motion_decoder(y_hat_motion_b) # scale space flow Decoder 
+                        else self.motion_decoder(y_hat_motion_b) 
         x_pred_b = self.forward_prediction(x_ref[0], motion_info_b) # scale space warping
 
 
@@ -309,7 +309,108 @@ class ScalableScaleSpaceFlow(ScaleSpaceFlow):
                         "hype":hype_likelihoods}
 
 
+    def encode_keyframe(self, x, quality, mask_pol):
+
+        if self.multiple_ref_encoder:
+            y_b = self.img_encoder[0](x)
+            y_p = self.img_encoder[1](x)
+            y = torch.cat([y_b,y_p],dim = 1)
+        else:
+            y = self.img_encoder(x)
+
+
+        y_hat, out_keyframe = self.img_hyperprior.compress(y,
+                                                           quality,
+                                                           mask_pol)
         
+
+        y_hat_b,y_hat_p = y_hat[0],y_hat[1]
+        x_hat_b = self.img_decoder[0](y_hat_b) if self.multiple_ref_decoder else  self.img_decoder(y_hat_b)
+        x_hat_p = self.img_decoder[1](y_hat_p) if self.multiple_ref_decoder else  self.img_decoder(y_hat_p)
+        
+
+        x_hat = [x_hat_b, x_hat_p] 
+        return x_hat, out_keyframe
+
+
+    def encode_inter(self, x_cur, x_ref, quality, mask_pol):
+        # encode the motion information
+        x_b = torch.cat((x_cur, x_ref[0]), dim=1)
+        x_p = torch.cat((x_cur, x_ref[1]), dim=1)
+
+        ind = 0 if quality == 0 else 1
+
+        y_motion_b = self.motion_encoder[0](x_b) if self.multiple_flow_encoder else self.motion_encoder(x_b)
+        y_motion_p = self.motion_encoder[1](x_p) if self.multiple_flow_encoder else self.motion_encoder(x_p)
+        y_motion = torch.cat([y_motion_b,y_motion_p],dim = 1)
+
+
+        y_motion_hat, out_motion = self.motion_hyperprior.compress(y_motion,
+                                                                   quality,
+                                                                   mask_pol)
+
+        # decode the space-scale flow information
+        y_hat_motion_b,y_hat_motion_p = y_motion_hat[0], y_motion_hat[1]
+
+        
+        motion_info = self.motion_decoder(y_motion_hat)
+        
+        x_pred = self.forward_prediction(x_ref, motion_info)
+
+        # residual
+        x_res = x_cur - x_pred
+        y_res = self.res_encoder(x_res)
+        y_res_hat, out_res = self.res_hyperprior.compress(y_res, 
+                                                          quality, 
+                                                          mask_pol)
+
+        # y_combine
+        y_combine = torch.cat((y_res_hat, y_motion_hat), dim=1)
+        x_res_hat = self.res_decoder(y_combine)
+
+        # final reconstruction: prediction + residual
+        x_rec = x_pred + x_res_hat
+
+        return x_rec, {
+            "strings": {
+                "motion": out_motion["strings"],
+                "residual": out_res["strings"],
+            },
+            "shape": {"motion": out_motion["shape"], "residual": out_res["shape"]},
+        }
+
+
+    def compress(self, frames, quality, mask_pol = None):
+
+        mask_pol == self.mask_policy if mask_pol is None else mask_pol
+
+
+        if not isinstance(frames, List):
+            raise RuntimeError(f"Invalid number of frames: {len(frames)}.")
+
+        frame_strings = []
+        shape_infos = []
+
+        
+        if quality == 0:
+            x_ref, out_keyframe = self.encode_keyframe(frames[0], 
+                                                   quality = quality,
+                                                   mask_pol = mask_pol)
+
+        frame_strings.append(out_keyframe["strings"])
+        shape_infos.append(out_keyframe["shape"])
+
+        for i in range(1, len(frames)):
+            x = frames[i]
+            x_ref, out_interframe = self.encode_inter(x, 
+                                                      x_ref,
+                                                      quality = quality,
+                                                      mask_pol = mask_pol)
+
+            frame_strings.append(out_interframe["strings"])
+            shape_infos.append(out_interframe["shape"])
+
+        return frame_strings, shape_infos
 
 
 

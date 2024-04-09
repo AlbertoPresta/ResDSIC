@@ -13,6 +13,6 @@
 # limitations under the License.
 
 from .utils import ImageFolder
-from .video import VideoFolder
+from .video import VideoFolder, Vimeo90kDataset
 
 __all__ = ["ImageFolder"]

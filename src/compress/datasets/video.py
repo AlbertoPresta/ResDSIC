@@ -58,8 +58,15 @@ class VideoFolder(Dataset):
         if transform is None:
             raise RuntimeError("Transform must be applied")
 
-        splitfile = Path(f"{root}/{split}.list")
-        splitdir = Path(f"{root}/sequences")
+        
+        
+        
+        if split != "valid":
+            splitfile = Path(f"{root}/{split}.list")
+            splitdir = Path(f"{root}/sequences")
+        else:
+            splitfile = Path(f"{root}/test.list")
+            splitdir = Path(f"{root}/sequences")          
 
         if not splitfile.is_file():
             raise RuntimeError(f'Missing file "{splitfile}"')
@@ -102,3 +109,42 @@ class VideoFolder(Dataset):
 
     def __len__(self):
         return len(self.sample_folders)
+    
+
+
+
+class Vimeo90kDataset(Dataset):
+
+    def __init__(self, root, transform=None, split="train", tuplet=7):
+        list_path = Path(root) / self._list_filename(split, tuplet)
+
+        with open(list_path) as f:
+
+            for line in f: 
+                if line.strip() != "":
+                    for idx in range(1,tuplet + 1):
+                        self.samples = [f"{root}/sequences/{line.rstrip()}/im{idx}.png"]
+
+
+        self.transform = transform
+
+    def __getitem__(self, index):
+        """
+        Args:
+            index (int): Index
+
+        Returns:
+            img: `PIL.Image.Image` or transformed `PIL.Image.Image`.
+        """
+        img = Image.open(self.samples[index]).convert("RGB")
+        if self.transform:
+            return self.transform(img)
+        return img
+
+    def __len__(self):
+        return len(self.samples)
+
+    def _list_filename(self, split: str, tuplet: int) -> str:
+        tuplet_prefix = {3: "tri", 7: "sep"}[tuplet]
+        list_suffix = {"train": "trainlist", "valid": "validlist","test":"testlist"}[split]
+        return f"{tuplet_prefix}_{list_suffix}.txt"

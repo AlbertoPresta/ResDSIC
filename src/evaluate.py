@@ -4,7 +4,7 @@ import sys
 import matplotlib.pyplot as plt
 from compress.utils.parser import parse_args_eval
 import torch
-from   compress.training.step import  compress_with_ac
+from   compress.training.image.step import  compress_with_ac
 from torchvision import transforms
 from compress.datasets.utils import  TestKodakDataset
 from compress.models import get_model

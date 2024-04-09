@@ -9,10 +9,10 @@ import time
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from   compress.training.step import train_one_epoch, valid_epoch, test_epoch, compress_with_ac
+from   compress.training.image.step import train_one_epoch, valid_epoch, test_epoch, compress_with_ac
 from torch.utils.data import DataLoader
 from torchvision import transforms
-from compress.training.loss import ScalableDistilledDistortionLoss, ScalableDistilledRateDistortionLoss
+from compress.training.image.loss import ScalableDistilledDistortionLoss, ScalableDistilledRateDistortionLoss, DistilledRateLoss
 from compress.datasets.utils import ImageFolder, TestKodakDataset
 from compress.models import get_model, models, initialize_model_from_pretrained
 #from compress.zoo import models
@@ -165,12 +165,23 @@ def main(argv):
         net.load_state_dict(checkpoint["state_dict"], strict=True)
     elif args.checkpoint_base != "none":
 
+
+        enh_checkpoint = torch.load(args.checkpoint_base,map_location=device) \
+                            if args.checkpoint_enh != "none" \
+                            else None
+
+
         base_checkpoint = torch.load(args.checkpoint_base,map_location=device)
-        new_check = initialize_model_from_pretrained(base_checkpoint, args.multiple_hyperprior)
+        new_check = initialize_model_from_pretrained(base_checkpoint, 
+                                                     args.multiple_hyperprior,
+                                                     checkpoint_enh = enh_checkpoint)
         net.load_state_dict(new_check,strict = False)
         net.update() 
         if args.freeze_base:
-            net.freeze_base_net(args.multiple_hyperprior)     
+            freeze_dec = True if args.checkpoint_enh is not "none" else False 
+            print("FREEZE DEC: ",freeze_dec)
+            net.freeze_base_net(args.multiple_hyperprior,freeze_dec)    
+
         
     optimizer, aux_optimizer = configure_optimizers(net, args)
     lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, "min", factor=0.3, patience=args.patience)
@@ -198,20 +209,17 @@ def main(argv):
                                                 encoder_base=encoder_base,
                                                 lmbda_list=args.lmbda_list,
                                                 gamma = args.gamma)
-    else:
+    elif args.type_loss == 0:
+        #questaaaaaaaaaaaaaaa
         criterion = ScalableDistilledDistortionLoss(encoder_enhanced= encoder_enhanced,
                                                 encoder_base=encoder_base,
                                                 lmbda_list=args.lmbda_list,
-                                                gamma = args.gamma)     
-
-
-    if args.checkpoint != "none" and args.continue_training:    
-        print("conitnuo il training!")
-        optimizer.load_state_dict(checkpoint["optimizer"])
-        #aux_optimizer.load_state_dict(checkpoint["aux_optimizer"])
-        lr_scheduler.load_state_dict(checkpoint["lr_scheduler"])
-
-    
+                                                gamma = args.gamma) 
+    else:
+        criterion = DistilledRateLoss(encoder_enhanced= encoder_enhanced,
+                                                encoder_base=encoder_base,
+                                                lmbda_list=args.lmbda_list
+                                                )            
 
 
 
@@ -354,9 +362,9 @@ def main(argv):
             stringa_lambda = stringa_lambda  + "_" + str(lamb)
 
 
-        name_folder = check + "_" +  str(args.type_loss) +  "_" + "_multi_" + stringa_lambda + "_" + args.model + "_" + str(args.division_dimension) + "_" + \
+        name_folder = args.code + "_" +  str(args.type_loss) +  "_" + "_multi_" + stringa_lambda + "_" + args.model + "_" + str(args.division_dimension) + "_" + \
              str(args.support_progressive_slices) + "_" + args.mask_policy +  "_" +  \
-            str(args.lrp_prog) + str(args.joiner_policy) + "_" + str(args.sampling_training) + str(args.freeze_base)
+              str(args.joiner_policy) + "_" + str(args.sampling_training) + str(args.freeze_base) 
         cartella = os.path.join(args.save_path,name_folder)
 
 

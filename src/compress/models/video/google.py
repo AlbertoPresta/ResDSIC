@@ -76,7 +76,6 @@ class ScaleSpaceFlow(CompressionModel):
         y = self.img_encoder(x)
         y_hat, out_keyframe = self.img_hyperprior.compress(y)
         x_hat = self.img_decoder(y_hat)
-
         return x_hat, out_keyframe
 
     def decode_keyframe(self, strings, shape):

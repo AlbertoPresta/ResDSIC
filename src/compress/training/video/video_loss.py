@@ -15,7 +15,7 @@ def collect_likelihoods_list(likelihoods_list, num_pixels: int):
         frame_bpp = 0
         for label, likelihoods in frame_likelihoods.items():
             label_bpp = 0
-            for field, v in likelihoods.items():
+            for field, v in likelihoods.items(): # hyperprior + main
                 bpp = torch.log(v).sum(dim=(1, 2, 3)) / (-math.log(2) * num_pixels)
 
                 bpp_loss += bpp
@@ -26,6 +26,7 @@ def collect_likelihoods_list(likelihoods_list, num_pixels: int):
                 bpp_info_dict[f"bpp_loss.{label}.{i}.{field}"] = bpp.sum()
             bpp_info_dict[f"bpp_loss.{label}.{i}"] = label_bpp.sum()
         bpp_info_dict[f"bpp_loss.{i}"] = frame_bpp.sum()
+    print("queste sono le info del bpp: ",bpp_info_dict)
     return bpp_loss, bpp_info_dict
 
 

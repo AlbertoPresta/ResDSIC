@@ -12,9 +12,9 @@ from torchvision import transforms
 from compressai.optimizers import net_aux_optimizer
 from compress.utils.functions import  create_savepath
 
-from compress.training.step import train_one_epoch, valid_epoch, test_epoch, compress_with_ac
-from compress.training.video_loss import collect_likelihoods_list, RateDistortionLoss
-from compress.datasets import VideoFolder
+from compress.training.video.step import train_one_epoch, valid_epoch, test_epoch
+from compress.training.video.video_loss import collect_likelihoods_list, RateDistortionLoss
+from compress.datasets import Vimeo90kDataset
 from compress.utils.parser import parse_args_video
 from compress.models import video_models
 import os
@@ -71,6 +71,8 @@ def configure_optimizers(net, args):
 def main(argv):
     args = parse_args_video(argv)
 
+
+    wandb.init(config= args, project="ssf-video", entity="albipresta") 
     if args.seed is not None:
         torch.manual_seed(args.seed)
         random.seed(args.seed)
@@ -80,30 +82,23 @@ def main(argv):
     valid_transforms = transforms.Compose([transforms.ToTensor(), transforms.CenterCrop(args.patch_size)])
     test_transforms = transforms.Compose([transforms.ToTensor()])
 
-    train_dataset = VideoFolder(
+    train_dataset = Vimeo90kDataset(
         args.dataset,
-        rnd_interval=True,
-        rnd_temp_order=True,
         split="train",
         transform=train_transforms,
     )
-    valid_dataset = VideoFolder(
+    valid_dataset =Vimeo90kDataset(
         args.dataset,
-        rnd_interval=False,
-        rnd_temp_order=False,
         split="valid",
         transform=valid_transforms,
     )
-    test_dataset = VideoFolder(
+    test_dataset = Vimeo90kDataset(
         args.dataset,
-        rnd_interval=False,
-        rnd_temp_order=False,
         split="test",
         transform=test_transforms,
     )
 
     device = "cuda" if args.cuda and torch.cuda.is_available() else "cpu"
-
 
     train_dataloader = DataLoader(
         train_dataset,
@@ -125,7 +120,7 @@ def main(argv):
 
     test_dataloader = DataLoader(
         test_dataset,
-        batch_size=args.test_batch_size,
+        batch_size=1,
         num_workers=args.num_workers,
         shuffle=False,
         pin_memory=(device == "cuda"),
@@ -136,7 +131,7 @@ def main(argv):
 
 
     if args.model == "ssf":
-        net = video_models[args.model](quality=3)
+        net = video_models[args.model]()
         net = net.to(device)
     
     else:
@@ -159,12 +154,14 @@ def main(argv):
         lr_scheduler.load_state_dict(checkpoint["lr_scheduler"])
 
     best_loss = float("inf")
+    counter = 0
     for epoch in range(last_epoch, args.epochs):
         print("******************************************************")
         print("epoch: ",epoch)
         start = time.time()
         print(f"Learning rate: {optimizer.param_groups[0]['lr']}")
-        train_one_epoch(
+        counter = train_one_epoch(
+            counter,
             net,
             criterion,
             train_dataloader,
@@ -173,21 +170,28 @@ def main(argv):
             epoch,
             args.clip_max_norm,
         )
-        loss = test_epoch(epoch, valid_dataloader, net, criterion)
+
+        start_val = time.time()
+        loss = valid_epoch(epoch, valid_dataloader, net, criterion)
+        end_val = time.time()
+        print("Runtime of validating on epoch:  ", epoch)
+        sec_to_hours(end_val - start_val)
         lr_scheduler.step(loss)
+
+        start_test = time.time()
+        _ = test_epoch(epoch, test_dataloader, net, criterion)
+        end_test = time.time()
+        print("Runtime of testing on epoch:  ", epoch)
+        sec_to_hours(end_test - start_test)
+
 
         is_best = loss < best_loss
         best_loss = min(loss, best_loss)
 
-        stringa_lambda = ""
-        for lamb in args.lmbda_list:
-            stringa_lambda = stringa_lambda  + "_" + str(lamb)
 
 
-        name_folder = "_" + "_multi_" + stringa_lambda + "_"\
-              + args.model + "_" + str(args.N) + "_" + str(args.division_dimension) + "_" + \
-             str(args.support_progressive_slices) + "_" + args.mask_policy +  "_" +    str(args.lrp_prog) + str(args.joiner_policy) + \
-            "_" + str(args.multiple_encoder) + "_" + str(args.multiple_decoder) + "_" + str(args.multiple_hyperprior)
+
+        name_folder = "v" + args.code + "_" + args.model
         cartella = os.path.join(args.save_path,name_folder)
 
 
@@ -198,7 +202,7 @@ def main(argv):
             print(f"La cartella '{cartella}' esiste già.")
 
 
-        last_pth, very_best =  create_savepath( cartella)
+        last_pth, very_best =  create_savepath(cartella)
 
 
 

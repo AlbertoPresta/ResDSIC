@@ -242,7 +242,7 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
         self.ns0 = self.num_slice_cumulative_list[0] 
         self.ns1 = self.num_slice_cumulative_list[1] 
 
-    def freeze_base_net(self,multiple_hyperprior):
+    def freeze_base_net(self,multiple_hyperprior,freeze_dec):
 
         for p in self.g_s[0].parameters():
             p.requires_grad = False
@@ -261,6 +261,10 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
                 p.requires_grad = False 
             for p in self.h_mean_s[0].parameters():
                 p.requires_grad = False
+        
+        if freeze_dec:
+            for p in self.g_s[1].parameters():
+                p.requires_grad = False       
         
 
 
