@@ -35,7 +35,7 @@ class AverageMeter:
 def create_savepath(base_path):
     very_best  = join(base_path,"_very_best.pth.tar")
     last = join(base_path,"_last.pth.tar")
-    return very_best, last
+    return last, very_best
 
 
 

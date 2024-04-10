@@ -4,7 +4,6 @@ import random
 import sys
 import time
 import torch
-import torch.nn as nn
 import torch.optim as optim
 import os
 from torch.utils.data import DataLoader
@@ -13,7 +12,7 @@ from compressai.optimizers import net_aux_optimizer
 from compress.utils.functions import  create_savepath
 
 from compress.training.video.step import train_one_epoch, valid_epoch, test_epoch
-from compress.training.video.video_loss import collect_likelihoods_list, RateDistortionLoss
+from compress.training.video.video_loss import  RateDistortionLoss, ScalableRateDistortionLoss
 from compress.datasets import Vimeo90kDataset
 from compress.utils.parser import parse_args_video
 from compress.models import video_models
@@ -80,7 +79,7 @@ def main(argv):
     # Warning, the order of the transform composition should be kept.
     train_transforms = transforms.Compose([transforms.ToTensor(), transforms.RandomCrop(args.patch_size)])
     valid_transforms = transforms.Compose([transforms.ToTensor(), transforms.CenterCrop(args.patch_size)])
-    test_transforms = transforms.Compose([transforms.ToTensor()])
+    test_transforms = transforms.Compose([transforms.ToTensor(), transforms.CenterCrop(args.patch_size)])
 
     train_dataset = Vimeo90kDataset(
         args.dataset,
@@ -95,11 +94,10 @@ def main(argv):
     test_dataset = Vimeo90kDataset(
         args.dataset,
         split="test",
-        transform=test_transforms,
+        transform=test_transforms
     )
 
-    device = "cuda" if args.cuda and torch.cuda.is_available() else "cpu"
-
+    device = "cuda" 
     train_dataloader = DataLoader(
         train_dataset,
         batch_size=args.batch_size,
@@ -126,22 +124,22 @@ def main(argv):
         pin_memory=(device == "cuda"),
     )
 
-
-
-
-
     if args.model == "ssf":
         net = video_models[args.model]()
         net = net.to(device)
-    
+        scalable = False
     else:
-        pass #todo 
-
-
+        net = video_models[args.model]()
+        net = net.to(device)
+        scalable = True
 
     optimizer, aux_optimizer = configure_optimizers(net, args)
     lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, "min")
-    criterion = RateDistortionLoss(lmbda=args.lmbda, return_details=True)
+
+    if scalable:
+        criterion = ScalableRateDistortionLoss(lmbda=args.lmbda, return_details=True)
+    else:
+        criterion = RateDistortionLoss(lmbda=args.lmbda[-1], return_details=True)
 
     last_epoch = 0
     if args.checkpoint:  # load from previous checkpoint
@@ -168,18 +166,21 @@ def main(argv):
             optimizer,
             aux_optimizer,
             epoch,
-            args.clip_max_norm,
+            1,
+            scalable=scalable
         )
 
+        print("COUNTER IS: ",counter)
+
         start_val = time.time()
-        loss = valid_epoch(epoch, valid_dataloader, net, criterion)
+        loss = valid_epoch(epoch, valid_dataloader, net, criterion, scalable=scalable)
         end_val = time.time()
         print("Runtime of validating on epoch:  ", epoch)
         sec_to_hours(end_val - start_val)
         lr_scheduler.step(loss)
 
         start_test = time.time()
-        _ = test_epoch(epoch, test_dataloader, net, criterion)
+        _ = test_epoch(epoch, test_dataloader, net, criterion, scalable=scalable)
         end_test = time.time()
         print("Runtime of testing on epoch:  ", epoch)
         sec_to_hours(end_test - start_test)
@@ -203,6 +204,8 @@ def main(argv):
 
 
         last_pth, very_best =  create_savepath(cartella)
+
+
 
 
 

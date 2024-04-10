@@ -9,6 +9,7 @@ from pytorch_msssim import ms_ssim
 import torch.nn.functional as F 
 from compressai.ops import compute_padding
 from compress.utils.functions import compute_msssim, compute_psnr
+import torch.nn.functional as F
 
 def compute_psnr(a, b):
     mse = torch.mean((a - b)**2).item()
@@ -18,10 +19,14 @@ def compute_msssim(a, b):
     return ms_ssim(a, b, data_range=1.).item()
 
 
-def compute_aux_loss(aux_list):
+def compute_aux_loss(aux_list, backward=False):
     aux_loss_sum = 0
     for aux_loss in aux_list:
         aux_loss_sum += aux_loss
+
+        if backward is True:
+            aux_loss.backward()
+
     return aux_loss_sum
 
 
@@ -32,14 +37,27 @@ def train_one_epoch(counter,
                     optimizer, 
                     aux_optimizer,
                     epoch, 
-                    clip_max_norm = 1.0):
+                    clip_max_norm = 1.0,
+                    scalable = False):
     model.train()
     device = next(model.parameters()).device
 
 
     mse_l = AverageMeter()
     bpp_l = AverageMeter()
+    bpp_l_keyframe = AverageMeter()
+    bpp_l_motion = AverageMeter()
+    bpp_l_residual = AverageMeter()
     loss = AverageMeter()
+
+    if scalable:
+        mse_l_base = AverageMeter()
+        mse_l_prog = AverageMeter()
+        bpp_l_base = AverageMeter()
+        bpp_l_prog = AverageMeter()
+        bpp_l_keyframe_prog = AverageMeter()
+        bpp_l_motion_prog = AverageMeter()
+        bpp_l_residual_prog = AverageMeter()       
 
     for i, batch in enumerate(train_dataloader):
 
@@ -60,10 +78,44 @@ def train_one_epoch(counter,
             "train_batch/mse":out_criterion["mse_loss"].mean().clone().detach().item(),
         }
         wandb.log(wand_dict)
+
+        bpp_k = out_criterion["bpp_info_dict"]["bpp_loss.keyframe"].clone().detach().item()
+        bpp_m = out_criterion["bpp_info_dict"]["bpp_loss.motion"].clone().detach().item()
+        bpp_r = out_criterion["bpp_info_dict"]["bpp_loss.residual"].clone().detach().item()
+        
+        bpp_l_keyframe.update(bpp_k)
+        bpp_l_motion.update(bpp_m)
+        bpp_l_residual.update(bpp_r)
+        mse_l.update(out_criterion["mse_loss"].mean().clone().detach().item())
+        bpp_l.update( out_criterion["bpp_loss"].clone().detach().item())
+        loss.update(out_criterion["loss"].clone().detach().item())
+        
+        wand_dict = {
+            "train_batch": counter,
+            "train_batch/bpp_keyframe":bpp_k,
+            "train_batch/bpp_motion": bpp_m,
+            "train_batch/bpp_residual":bpp_r,
+        }
+        wandb.log(wand_dict)
+
+
+        if scalable:
+            bpp_k_prog = out_criterion["bpp_info_dict_prog"]["bpp_loss.keyframe"].clone().detach().item()
+            bpp_m_prog = out_criterion["bpp_info_dict_prog"]["bpp_loss.motion"].clone().detach().item()
+            bpp_r_prog = out_criterion["bpp_info_dict_prog"]["bpp_loss.residual"].clone().detach().item()
+            
+            bpp_l_keyframe.update(bpp_k)
+            bpp_l_motion.update(bpp_m)
+            bpp_l_residual.update(bpp_r)
+            bpp_l_keyframe_prog.update(bpp_k_prog)
+            bpp_l_motion_prog.update(bpp_m_prog)
+            bpp_l_residual_prog.update(bpp_r_prog)
+            mse_l_base.update(out_criterion["mse_base"].mean().clone().detach().item())
+            mse_l_prog.update(out_criterion["mse_prog"].mean().clone().detach().item())
+            bpp_l_prog.update(out_criterion["bpp_prog"].clone().detach().item())
+            bpp_l_base.update(out_criterion["bpp_base"].clone().detach().item())
+
         counter += 1
-
-
-
 
         if clip_max_norm > 0:
             torch.nn.utils.clip_grad_norm_(model.parameters(), clip_max_norm)
@@ -71,17 +123,6 @@ def train_one_epoch(counter,
 
         aux_loss = compute_aux_loss(model.aux_loss(), backward=True)
         aux_optimizer.step()
-
-        if i % 10 == 0:
-            print(
-                f"Train epoch {epoch}: ["
-                f"{i*len(d)}/{len(train_dataloader.dataset)}"
-                f" ({100. * i / len(train_dataloader):.0f}%)]"
-                f'\tLoss: {out_criterion["loss"].item():.3f} |'
-                f'\tMSE loss: {out_criterion["mse_loss"].item():.3f} |'
-                f'\tBpp loss: {out_criterion["bpp_loss"].item():.2f} |'
-                f"\tAux loss: {aux_loss.item():.2f}"
-            )
 
         if i % 1000 == 0:
             print(
@@ -99,13 +140,27 @@ def train_one_epoch(counter,
         "train/loss": loss.avg,
         "train/bpp": bpp_l.avg,
         "train/mse": mse_l.avg,
+        "train/bpp_keyframe":bpp_l_keyframe.avg,
+        "train/bpp_motion":bpp_l_motion.avg,
+        "train/bpp_residual":bpp_l_residual.avg
         }
     wandb.log(log_dict)
-    
+
+    if scalable:
+        log_dict = {
+            "train/mse_base":mse_l_base.avg,
+            "train/mse_prog":mse_l_prog.avg,
+            "train/bpp_base":bpp_l_base.avg,
+            "train/bpp_prog":bpp_l_prog.avg,
+            "train/bpp_keyframe_prog":bpp_l_keyframe_prog.avg,
+            "train/bpp_motion_prog":bpp_l_motion_prog.avg,
+            "train/bpp_residual_prog":bpp_l_residual_prog.avg
+            }
+        wandb.log(log_dict)   
 
     return counter
 
-def valid_epoch(epoch, test_dataloader, model, criterion):
+def valid_epoch(epoch, test_dataloader, model, criterion,scalable = False):
     model.eval()
     device = next(model.parameters()).device
 
@@ -113,7 +168,18 @@ def valid_epoch(epoch, test_dataloader, model, criterion):
     bpp_loss = AverageMeter()
     mse_loss = AverageMeter()
     aux_loss = AverageMeter()
+    bpp_l_keyframe = AverageMeter()
+    bpp_l_motion = AverageMeter()
+    bpp_l_residual = AverageMeter()
 
+    if scalable: 
+        bpp_l_keyframe_prog = AverageMeter()
+        bpp_l_motion_prog = AverageMeter()
+        bpp_l_residual_prog = AverageMeter() 
+        bpp_l_base = AverageMeter()
+        bpp_l_prog = AverageMeter()   
+
+  
     with torch.no_grad():
         for batch in test_dataloader:
             d = [frames.to(device) for frames in batch]
@@ -124,6 +190,32 @@ def valid_epoch(epoch, test_dataloader, model, criterion):
             bpp_loss.update(out_criterion["bpp_loss"])
             loss.update(out_criterion["loss"])
             mse_loss.update(out_criterion["mse_loss"])
+
+
+            bpp_k = out_criterion["bpp_info_dict"]["bpp_loss.keyframe"].clone().detach().item()
+            bpp_m = out_criterion["bpp_info_dict"]["bpp_loss.motion"].clone().detach().item()
+            bpp_r = out_criterion["bpp_info_dict"]["bpp_loss.residual"].clone().detach().item()
+            
+            bpp_l_keyframe.update(bpp_k)
+            bpp_l_motion.update(bpp_m)
+            bpp_l_residual.update(bpp_r)
+
+
+            if scalable:
+                bpp_k_prog = out_criterion["bpp_info_dict_prog"]["bpp_loss.keyframe"].clone().detach().item()
+                bpp_m_prog = out_criterion["bpp_info_dict_prog"]["bpp_loss.motion"].clone().detach().item()
+                bpp_r_prog = out_criterion["bpp_info_dict_prog"]["bpp_loss.residual"].clone().detach().item()
+
+                bpp_l_keyframe_prog.update(bpp_k_prog)
+                bpp_l_motion_prog.update(bpp_m_prog)
+                bpp_l_residual_prog.update(bpp_r_prog)
+
+                bpp_l_base.update(out_criterion["bpp_base"])
+                bpp_l_prog.update(out_criterion["bpp_prog"])
+
+                   
+
+
 
     print(
         f"valid epoch {epoch}: Average losses:"
@@ -138,10 +230,25 @@ def valid_epoch(epoch, test_dataloader, model, criterion):
             "valid":epoch,
             "valid/loss": loss.avg,
             "valid/bpp":bpp_loss.avg,
-            "valid/mse": mse_loss.avg
+            "valid/mse": mse_loss.avg,
+            "valid/bpp_keyframe":bpp_l_keyframe.avg,
+            "valid/bpp_motion":bpp_l_motion.avg,
+            "valid/bpp_residual":bpp_l_residual.avg,
             }
 
     wandb.log(log_dict)
+
+    if scalable:
+        log_dict = {
+                "valid":epoch,
+                "valid/bpp_base":bpp_l_base.avg,
+                "valid/bpp_prog":bpp_l_prog.avg,
+                "valid/bpp_keyframe_prog":bpp_l_keyframe_prog.avg,
+                "valid/bpp_motion_prog":bpp_l_motion_prog.avg,
+                "valid/bpp_residual_prog":bpp_l_residual_prog.avg,
+                }
+
+        wandb.log(log_dict)  
 
     return loss.avg
 
@@ -149,7 +256,7 @@ def valid_epoch(epoch, test_dataloader, model, criterion):
 
 
 
-def test_epoch(epoch, test_dataloader, model, criterion):
+def test_epoch(epoch, test_dataloader, model, criterion,scalable = False):
     model.eval()
     device = next(model.parameters()).device
 
@@ -158,6 +265,18 @@ def test_epoch(epoch, test_dataloader, model, criterion):
     mse_loss = AverageMeter()
     aux_loss = AverageMeter()
     psnr_l = AverageMeter()
+    bpp_l_keyframe = AverageMeter()
+    bpp_l_motion = AverageMeter()
+    bpp_l_residual = AverageMeter()
+
+    if scalable:
+        psnr_l_prog = AverageMeter()
+        bpp_l_prog = AverageMeter()
+        bpp_l_base = AverageMeter()
+        bpp_l_keyframe_prog = AverageMeter()
+        bpp_l_motion_prog = AverageMeter()
+        bpp_l_residual_prog = AverageMeter()
+
 
     with torch.no_grad():
         for batch in test_dataloader:
@@ -170,9 +289,34 @@ def test_epoch(epoch, test_dataloader, model, criterion):
             loss.update(out_criterion["loss"])
             mse_loss.update(out_criterion["mse_loss"])
 
-            psnr = compute_psnr_frames(out_net["x_hat"],d)
 
+            psnr = compute_psnr_frames(out_net["x_hat"][0],d)
             psnr_l.update(psnr)
+            if scalable:
+                psnr = compute_psnr_frames(out_net["x_hat"][1],d)
+                psnr_l_prog.update(psnr)        
+
+            bpp_k = out_criterion["bpp_info_dict"]["bpp_loss.keyframe"].clone().detach().item()
+            bpp_m = out_criterion["bpp_info_dict"]["bpp_loss.motion"].clone().detach().item()
+            bpp_r = out_criterion["bpp_info_dict"]["bpp_loss.residual"].clone().detach().item()
+            
+            bpp_l_keyframe.update(bpp_k)
+            bpp_l_motion.update(bpp_m)
+            bpp_l_residual.update(bpp_r)
+
+            if scalable:
+                bpp_k_prog = out_criterion["bpp_info_dict_prog"]["bpp_loss.keyframe"].clone().detach().item()
+                bpp_m_prog = out_criterion["bpp_info_dict_prog"]["bpp_loss.motion"].clone().detach().item()
+                bpp_r_prog = out_criterion["bpp_info_dict_prog"]["bpp_loss.residual"].clone().detach().item()
+                
+                
+                
+                bpp_l_keyframe_prog.update(bpp_k_prog)
+                bpp_l_motion_prog.update(bpp_m_prog)
+                bpp_l_residual_prog.update(bpp_r_prog)
+
+                bpp_l_base.update( out_criterion["bpp_base"].clone().detach().item())
+                bpp_l_prog.update( out_criterion["bpp_prog"].clone().detach().item())
 
 
 
@@ -189,11 +333,35 @@ def test_epoch(epoch, test_dataloader, model, criterion):
             "test/loss": loss.avg,
             "test/bpp":bpp_loss.avg,
             "test/mse": mse_loss.avg,
-            "test/psnr": psnr_l.avg
+            "test/psnr": psnr_l.avg,
+            "test/bpp_keyframe":bpp_l_keyframe.avg,
+            "test/bpp_motion":bpp_l_motion.avg,
+            "test/bpp_residual":bpp_l_residual.avg
             }
-    
-
     wandb.log(log_dict)
+    if scalable: 
+
+        log_dict = {
+                "test_base":epoch,
+                "test_base/bpp":bpp_l_base.avg,
+                "test_base/psnr": psnr_l.avg,
+                "test_base/bpp_keyframe":bpp_l_keyframe.avg,
+                "test_base/bpp_motion":bpp_l_motion.avg,
+                "test_base/bpp_residual":bpp_l_residual.avg
+                }
+        wandb.log(log_dict) 
+
+        log_dict = {
+                "test_prog":epoch,
+                "test_prog/bpp":bpp_l_prog.avg,
+                "test_prog/psnr": psnr_l_prog.avg,
+                "test_prog/bpp_keyframe":bpp_l_keyframe_prog.avg,
+                "test_prog/bpp_motion":bpp_l_motion_prog.avg,
+                "test_prog/bpp_residual":bpp_l_residual_prog.avg
+                }
+        wandb.log(log_dict) 
+
+
 
 
     return loss.avg
@@ -202,6 +370,10 @@ def test_epoch(epoch, test_dataloader, model, criterion):
 def compute_psnr(a, b):
     mse = torch.mean((a - b)**2).item()
     return -10 * math.log10(mse)
+
+
+def crop(x, padding):
+    return F.pad(x, tuple(-p for p in padding))
 
 
 def compute_psnr_frames(output,input):
