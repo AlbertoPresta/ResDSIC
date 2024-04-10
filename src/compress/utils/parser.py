@@ -5,8 +5,16 @@ from compress.models import models, video_models
 
 def parse_args_eval(argv):
     parser = argparse.ArgumentParser(description="Example training script.") #dddd
-    parser.add_argument("--checkpoint", type=str, default = "/scratch/ResDSIC/models/res_m4_me_md/_very_best.pth.tar",help="Path to a checkpoint")#/scratch/ResDSIC/models/res2/_very_best.pth.tar zero__multi__0.005_0.05_progressive_scalable_res_False_False#/scratch/ResDSIC/models/zero__multi__0.0035_0.05_cond_ind_two-levels_Trueconcatenation_False/_very_best.pth.tar
-    args = parser.parse_args(argv)
+    parser.add_argument("--path",type=str,default = "/scratch/ResDSIC/models/")
+    parser.add_argument("--model",type=str,default = "/_very_best.pth.tar")
+    parser.add_argument("--checkpoint",  nargs='+', type=str, default = ["res_m2_md",
+                                                                         "res_m4_005_05_encdec",                                                  
+                                                                         "res_m4_pret_005_05_memd_frozen"
+                                                                         ],\
+                                                                        help="Path to a checkpoint")#/scratch/ResDSIC/models/res2/_very_best.pth.tar zero__multi__0.005_0.05_progressive_scalable_res_False_False#/scratch/ResDSIC/models/zero__multi__0.0035_0.05_cond_ind_two-levels_Trueconcatenation_False/_very_best.pth.tar
+    
+    parser.add_argument("--seed", type=float,default = 42, help="Set random seed for reproducibility")
+    args = parser.parse_args(argv) #dddd
     return args
 
 

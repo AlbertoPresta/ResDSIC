@@ -221,7 +221,26 @@ class WACNN(CompressionModel):
         net.load_state_dict(state_dict)
         return net
 
-    def compress(self, x):
+
+    def extract_mask(self,scale, device, pr = 0):
+        #outputs = self.gaussian_conditional.quantize(y_slice, "noise" , mu)
+        #likel = self.gaussian_conditional._likelihood(outputs, scales, mu) #questo è il rate
+        shapes = scale.shape
+        bs, ch, w,h = shapes
+        #print("printo il valore di likelihood originale----> ",torch.log(likel).sum() / (-math.log(2) * 1000)) #dddd
+        pr = pr*0.1
+        pr_bis = 1.0 - pr
+        scale = scale.ravel()
+        quantile = torch.quantile(scale, pr_bis) #dddd
+        res = scale >= quantile 
+        res = res.float()
+
+        #print("original pr: ",pr,"distribution---> ",torch.unique(res,return_counts = True))
+        #print("dovrebbero essere soli 1: ",torch.unique(res, return_counts = True))
+        return res.reshape(bs,ch,w,h).to(torch.float).to(device)
+
+
+    def compress(self, x,quality = 0, mask_pol = None):
         y = self.g_a(x)
         y_shape = y.shape[2:]
 
@@ -257,9 +276,18 @@ class WACNN(CompressionModel):
             scale = self.cc_scale_transforms[slice_index](scale_support)
             scale = scale[:, :, :y_shape[0], :y_shape[1]]
 
-            index = self.gaussian_conditional.build_indexes(scale)
-            y_q_slice = self.gaussian_conditional.quantize(y_slice, "symbols", mu)
-            y_hat_slice = y_q_slice + mu
+            if 0 <quality < 10:
+
+                mask = self.extract_mask(scale,scale.device, pr = quality)
+                mask = mask.int() 
+                scale = scale*mask      
+                index = self.gaussian_conditional.build_indexes(scale*mask)
+                y_q_slice = self.gaussian_conditional.quantize((y_slice - mu)*mask , "symbols") 
+                y_hat_slice = y_q_slice + mu     
+            else:
+                index = self.gaussian_conditional.build_indexes(scale)
+                y_q_slice = self.gaussian_conditional.quantize(y_slice, "symbols", mu)
+                y_hat_slice = y_q_slice + mu
 
             symbols_list.extend(y_q_slice.reshape(-1).tolist())
             indexes_list.extend(index.reshape(-1).tolist())
@@ -300,7 +328,7 @@ class WACNN(CompressionModel):
         # Using the complementary error function maximizes numerical precision.
         return half * torch.erfc(const * inputs)
 
-    def decompress(self, strings, shape):
+    def decompress(self, strings, shape,quality = 10,  mask_pol = None):
         z_hat = self.entropy_bottleneck.decompress(strings[1], shape)
         latent_scales = self.h_scale_s(z_hat)
         latent_means = self.h_mean_s(z_hat)
@@ -330,10 +358,18 @@ class WACNN(CompressionModel):
             scale = self.cc_scale_transforms[slice_index](scale_support)
             scale = scale[:, :, :y_shape[0], :y_shape[1]]
 
-            index = self.gaussian_conditional.build_indexes(scale)
 
-            rv = decoder.decode_stream(index.reshape(-1).tolist(), cdf, cdf_lengths, offsets)
-            rv = torch.Tensor(rv).reshape(mu.shape)
+            if 0<quality<10:
+                mask = self.extract_mask(scale,scale.device,pr = quality)
+                scale = scale*mask
+                index = self.gaussian_conditional.build_indexes(scale)
+                rv = decoder.decode_stream(index.reshape(-1).tolist(), cdf, cdf_lengths, offsets)
+                rv = torch.Tensor(rv).reshape(mu.shape)
+            else:
+                index = self.gaussian_conditional.build_indexes(scale)
+                rv = decoder.decode_stream(index.reshape(-1).tolist(), cdf, cdf_lengths, offsets)
+                rv = torch.Tensor(rv).reshape(mu.shape)
+            
             y_hat_slice = self.gaussian_conditional.dequantize(rv, mu)
 
             lrp_support = torch.cat([mean_support, y_hat_slice], dim=1)

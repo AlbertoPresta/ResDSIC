@@ -87,7 +87,20 @@ import torch
 def plot_rate_distorsion(bpp_res, psnr_res,epoch, eest = "compression"):
 
 
+
+    chiavi_da_mettere = list(psnr_res.keys())
+
+
     legenda = {}
+    for i,c in enumerate(chiavi_da_mettere):
+        legenda[c] = {}
+        legenda[c]["colore"] = [palette[i],'-']
+        legenda[c]["legends"] = c
+        legenda[c]["symbols"] = ["*"]*300
+        legenda[c]["markersize"] = [5]*300    
+
+
+    """
     legenda["base"] = {}
     legenda["our"] = {}
     legenda["tri_planet_22"] = {}
@@ -117,14 +130,13 @@ def plot_rate_distorsion(bpp_res, psnr_res,epoch, eest = "compression"):
     legenda["tri_planet_23"]["legends"] = "tri_planet_23"
     legenda["tri_planet_23"]["symbols"] = ["*"]*27
     legenda["tri_planet_23"]["markersize"] = [5]*27
-    
+    """
     plt.figure(figsize=(12,8)) # fig, axes = plt.subplots(1, 1, figsize=(8, 5))
 
-    list_names = list(bpp_res.keys()) #[base our]
 
 
 
-    list_names = list(bpp_res.keys())
+    list_names = list(psnr_res.keys())
 
     minimo_bpp, minimo_psnr = 10000,1000
     massimo_bpp, massimo_psnr = 0,0
@@ -134,8 +146,8 @@ def plot_rate_distorsion(bpp_res, psnr_res,epoch, eest = "compression"):
         bpp = bpp_res[type_name]
         psnr = psnr_res[type_name]
         colore = legenda[type_name]["colore"][0]
-        symbols = legenda[type_name]["symbols"]
-        markersize = legenda[type_name]["markersize"]
+        #symbols = legenda[type_name]["symbols"]
+        #markersize = legenda[type_name]["markersize"]
         leg = legenda[type_name]["legends"]
 
 
@@ -194,15 +206,22 @@ def plot_rate_distorsion(bpp_res, psnr_res,epoch, eest = "compression"):
 def plot_decoded_time(bpp_res, time_res,epoch, eest = "compression"):
 
 
+    chiavi_da_mettere = list(time_res.keys())
+
+
     legenda = {}
-    legenda["our"] = {}
-    legenda["tri_planet_23"] = {}
+    for i,c in enumerate(chiavi_da_mettere):
+        legenda[c] = {}
+        legenda[c]["colore"] = [palette[i],'-']
+        legenda[c]["legends"] = c
+        legenda[c]["symbols"] = ["*"]*300
+        legenda[c]["markersize"] = [5]*300    
 
 
 
 
 
-
+    """
     legenda["our"]["colore"] = [palette[3],'-']
     legenda["our"]["legends"] = "proposed"
     legenda["our"]["symbols"] = ["*"]*30
@@ -216,10 +235,11 @@ def plot_decoded_time(bpp_res, time_res,epoch, eest = "compression"):
     legenda["tri_planet_23"]["legends"] = "tri_planet_23"
     legenda["tri_planet_23"]["symbols"] = ["*"]*50
     legenda["tri_planet_23"]["markersize"] = [5]*50
+    """
     
     plt.figure(figsize=(12,8)) # fig, axes = plt.subplots(1, 1, figsize=(8, 5))
 
-    list_names = list(bpp_res.keys()) #[base our]
+
 
 
 

@@ -305,7 +305,7 @@ def sec_to_hours(seconds):
     d=["{} hours {} mins {} seconds".format(a, b, c)]
     print(d[0])
 
-def compress_with_ac(model,  filelist, device, epoch, pr_list = [0.05,0.04,0.03,0.02,0.01], mask_pol = None,  writing = None, progressive = False):
+def compress_with_ac(model,  filelist, device, epoch, pr_list = [0.05,0.04,0.03,0.02,0.01], mask_pol = None,  writing = None, progressive = False,base = False):
     #pr_list = [0] + pr_list + [-1]
     #model.update(None, device)
     l = len(pr_list)
@@ -317,6 +317,7 @@ def compress_with_ac(model,  filelist, device, epoch, pr_list = [0.05,0.04,0.03,
 
     with torch.no_grad():
         for i,d in enumerate(filelist):
+            #print("image: ",d)
             #print("------------------------------ IMAGE ----> ",d) 
 
 
@@ -336,7 +337,7 @@ def compress_with_ac(model,  filelist, device, epoch, pr_list = [0.05,0.04,0.03,
                 #if j%8==0:
                 #    print(sum(len(s[0]) for s in data["strings"][0]))
                 start = time.time()
-                out_dec = model.decompress(data["strings"], data["shape"], quality = p, mask_pol = mask_pol, masks = data["masks"])
+                out_dec = model.decompress(data["strings"], data["shape"], quality = p, mask_pol = mask_pol)
                 end = time.time()
                 #print("Runtime of the epoch:  ", epoch)
                 decoded_time = end-start
@@ -355,32 +356,35 @@ def compress_with_ac(model,  filelist, device, epoch, pr_list = [0.05,0.04,0.03,
                 num_pixels = size[0] * size[2] * size[3]
 
                 # calcolo lo stream del base 
-                
-                if progressive:
-                    data_string_scale = data["strings"][0] # questo è una lista
-                    bpp_scale = sum(len(s[0]) for s in data_string_scale) * 8.0 / num_pixels #ddddddd
-                    
-                    data_string_hype = data["strings"][1]
-                    bpp_hype = sum(len(s) for s in data_string_hype) * 8.0 / num_pixels
-
-                    if len(data["strings"])> 2:
-                        data_string_prog = data["strings"][1]
-                        bpp_prog = sum(len(s) for s in data_string_prog) * 8.0 / num_pixels                       
-                    
-                        bpp = bpp_hype + bpp_scale + bpp_prog 
-                    else:
-                        bpp = bpp_hype + bpp_scale
+                if base is True:
+                    bpp = sum(len(s[0]) for s in data["strings"]) * 8.0 / num_pixels
 
                 else:
-                    if p != 0:
-                        data_string_hype = data["strings"][2]
+                    if progressive:
+                        data_string_scale = data["strings"][0] # questo è una lista
+                        bpp_scale = sum(len(s[0]) for s in data_string_scale) * 8.0 / num_pixels #ddddddd
+                        
+                        data_string_hype = data["strings"][1]
                         bpp_hype = sum(len(s) for s in data_string_hype) * 8.0 / num_pixels
 
-                        data_string_scale = data["strings"][-1] # questo è una lista
-                        bpp_scale = sum(len(s[0]) for s in data_string_scale) * 8.0 / num_pixels #ddddddd
+                        if len(data["strings"])> 2:
+                            data_string_prog = data["strings"][1]
+                            bpp_prog = sum(len(s) for s in data_string_prog) * 8.0 / num_pixels                       
+                        
+                            bpp = bpp_hype + bpp_scale + bpp_prog 
+                        else:
+                            bpp = bpp_hype + bpp_scale
 
-                        bpp += bpp_scale 
-                        bpp += bpp_hype
+                    else:
+                        if p != 0:
+                            data_string_hype = data["strings"][2]
+                            bpp_hype = sum(len(s) for s in data_string_hype) * 8.0 / num_pixels
+
+                            data_string_scale = data["strings"][-1] # questo è una lista
+                            bpp_scale = sum(len(s[0]) for s in data_string_scale) * 8.0 / num_pixels #ddddddd
+
+                            bpp += bpp_scale 
+                            bpp += bpp_hype
 
                 bpp_loss[j].update(bpp)
 

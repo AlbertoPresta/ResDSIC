@@ -26,11 +26,11 @@ def replace_keys(checkpoint):
     # Creiamo un nuovo OrderedDict con le chiavi modificate all'interno di un ciclo for
     nuovo_ordered_dict = OrderedDict()
     for chiave, valore in checkpoint.items():
-        if "g_a_enh." in chiave: 
+        if "g_a_enh." in chiave : 
             
             nuova_chiave = chiave.replace("g_a_enh.", "g_a.1.")
             nuovo_ordered_dict[nuova_chiave] = valore
-        elif "g_a." in chiave: 
+        elif "g_a." in chiave and "g_a.0." not in chiave: 
             nuova_chiave = chiave.replace("g_a.", "g_a.0.")
             nuovo_ordered_dict[nuova_chiave] = valore  
         else: 
@@ -42,9 +42,9 @@ def main(argv):
     args = parse_args_eval(argv)
     print(args)
     device = "cuda" #if args.cuda and torch.cuda.is_available() else "cpu"
-
-    print("Loading", args.checkpoint)
-    checkpoint = torch.load(args.checkpoint, map_location=device)
+    total_path = args.path + args.checkpoint[0] + args.model
+    print("Loading", total_path)
+    checkpoint = torch.load(total_path, map_location=device)
     new_args = checkpoint["args"]
 
     if "multiple_encoder" not in new_args:
@@ -83,7 +83,7 @@ def main(argv):
     #net = WACNN()
     
     
-    checkpoint_model = replace_keys(checkpoint["state_dict"])
+    checkpoint_model = checkpoint["state_dict"]# replace_keys(checkpoint["state_dict"])
     net.load_state_dict(checkpoint_model ,strict = True) #dddfffffffff
     #net.load_state_dict(checkpoint,strict = True)
     net.update() 
@@ -103,7 +103,18 @@ def main(argv):
 
 
     print("entro qua!!!!!")
-    list_pr = list(np.arange(0,10.1,0.1))  #dddd
+    list_pr_1 = list(np.arange(0,5.05,0.05))  #dddd
+    list_pr_2  = list(np.arange(5,10.5,0.5))
+
+
+    
+
+    list_pr = list_pr_1 + list_pr_2
+
+    list_pr = [0,3,10]
+
+    
+
     mask_pol ="point-based-std"
     bpp, psnr,dec_time = compress_with_ac(net,  
                                  filelist, 
@@ -123,12 +134,23 @@ def main(argv):
 
     decoded_time["our"] = dec_time
 
-    decoded_time["tri_planet_23"] = [2.3024718718869344, 2.426101867109537,
+    decoded_time["tri_planet_23"] = [2.3024718718869344, 
+                                     2.426101867109537,
                                       2.55243898762597, 
-                                     2.662715111176173, 2.7725952692104108, 2.8762405349148645, 
-                                     2.9079313476880393, 2.980673296329303, 9.18038641413053, 
-                                     6.93557970225811, 6.211363573869069, 5.869887267549832, 
-                                     5.676065286000569, 5.4823808045614335, 5.5328710553822695, 
+                                     2.662715111176173, 
+                                    2.55243898762597, 
+                                     2.662715111176173,
+                                     2.7725952692104108, 
+                                     2.8762405349148645, 
+                                     2.9079313476880393, 
+                                     2.980673296329303, 
+                                     9.18038641413053, 
+                                     6.93557970225811, 
+                                     6.211363573869069, 
+                                     5.869887267549832, 
+                                     5.676065286000569, 
+                                     5.4823808045614335, 
+                                     5.5328710553822695, 
                                      5.56682376563549]
     bpp_res["our"] = bpp
     psnr_res["our"] = psnr
