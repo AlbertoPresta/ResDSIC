@@ -64,7 +64,11 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
         self.multiple_hyperprior = multiple_hyperprior
 
 
+
+
+
         self.double_dim = double_dim
+        print("double dimension----->",self.double_dim) #dddd
         self.scalable_levels = len(self.lmbda_list)
         self.masking = ChannelMask(self.mask_policy, 
                                    self.scalable_levels,
@@ -411,6 +415,8 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
         y_likelihood_enhanced = []
         x_hat_progressive = []
 
+        scales_baseline = []
+
 
         for slice_index in range(self.ns0):
             y_slice = y_slices[slice_index]
@@ -430,6 +436,7 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
             scale = self.cc_scale_transforms[idx](scale_support)#self.extract_scale(idx,slice_index,scale_support)
             scale = scale[:, :, :y_shape[0], :y_shape[1]]
 
+            scales_baseline.append(scale)
             _, y_slice_likelihood = self.gaussian_conditional(y_slice,
                                                             scale, 
                                                             mu, 
@@ -483,11 +490,20 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
                 scale = self.cc_scale_transforms_prog[current_index](scale_support)#self.extract_scale(idx,slice_index,scale_support)
                 scale = scale[:, :, :y_shape[0], :y_shape[1]]
 
-
-                block_mask = self.masking(scale,
-                                        slice_index = current_index,
-                                        pr = q, 
-                                        mask_pol = mask_pol) 
+                if self.double_dim is False or mask_pol in ("two-levels","point-base-std", "three-levels-std"):
+                    block_mask = self.masking(scale,
+                                            scale_base = None,
+                                            slice_index = current_index,
+                                            pr = q, 
+                                            mask_pol = mask_pol) 
+                else:
+                    block_mask = self.masking(scale = scale,
+                                            scale_base = torch.cat([scale,scales_baseline[current_index]],dim = 1),
+                                            slice_index = current_index,
+                                            pr = q, 
+                                            mask_pol = mask_pol)                    
+                
+                
                 block_mask = self.masking.apply_noise(block_mask, 
                                                       training if "learnable" in mask_pol else False)
 
@@ -581,6 +597,8 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
         y_strings = []
         masks = []
 
+        scales_baseline = []
+
         for slice_index in range(self.ns0):
             y_slice = y_slices[slice_index]
             indice = min(self.max_support_slices,slice_index%self.ns0)
@@ -596,6 +614,8 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
             mu = mu[:, :, :y_shape[0], :y_shape[1]]  
             scale = self.cc_scale_transforms[idx](scale_support)#self.extract_scale(idx,slice_index,scale_support)
             scale = scale[:, :, :y_shape[0], :y_shape[1]]
+
+            scales_baseline.append(scale)
 
             index = self.gaussian_conditional.build_indexes(scale)
             y_q_string  = self.gaussian_conditional.compress(y_slice, index,mu)
@@ -633,10 +653,18 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
             scale = self.cc_scale_transforms_prog[current_index](scale_support)#self.extract_scale(idx,slice_index,scale_support)
             scale = scale[:, :, :y_shape[0], :y_shape[1]]
 
-            block_mask = self.masking(scale,
-                                    slice_index = current_index, 
-                                    pr = quality,
-                                    mask_pol = mask_pol)
+            if self.double_dim is False or mask_pol in ("two-levels","point-base-std", "three-levels-std"):
+                block_mask = self.masking(scale,
+                                            scale_base = None,
+                                            slice_index = current_index,
+                                            pr = quality, 
+                                            mask_pol = mask_pol) 
+            else:
+                block_mask = self.masking(scale = scale,
+                                            scale_base = torch.cat([scale,scales_baseline[current_index]],dim = 1),
+                                            slice_index = current_index,
+                                            pr = quality, 
+                                            mask_pol = mask_pol)   
             masks.append(block_mask)
             block_mask = self.masking.apply_noise(block_mask, False)
             index = self.gaussian_conditional.build_indexes(scale*block_mask).int()
@@ -682,6 +710,7 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
         y_string = strings[0]
         y_hat_slices = []
 
+        scales_baseline = []
         for slice_index in range(self.num_slice_cumulative_list[0]): #ddd
             pr_strings = y_string[slice_index]
             idx = slice_index%self.num_slice_cumulative_list[0]
@@ -696,6 +725,8 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
             mu = mu[:, :, :y_shape[0], :y_shape[1]]  
             scale = self.cc_scale_transforms[idx](scale_support)#self.extract_scale(idx,slice_index,scale_support)
             scale = scale[:, :, :y_shape[0], :y_shape[1]]
+
+            scales_baseline.append(scale)
 
             index = self.gaussian_conditional.build_indexes(scale)
 
@@ -732,15 +763,18 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
             mu = mu[:, :, :y_shape[0], :y_shape[1]]  
             scale = scale[:, :, :y_shape[0], :y_shape[1]]
 
-            if mask_pol != "random":
+            if self.double_dim is False or mask_pol in ("two-levels","point-base-std", "three-levels-std"):
                 block_mask = self.masking(scale,
-                                          slice_index = current_index, 
-                                          pr = quality, 
-                                          mask_pol = mask_pol)
-                block_mask = self.masking.apply_noise(block_mask, False)
-            else: 
-                assert masks is not None 
-                block_mask = masks[current_index]
+                                            scale_base = None,
+                                            slice_index = current_index,
+                                            pr = quality, 
+                                            mask_pol = mask_pol) 
+            else:
+                block_mask = self.masking(scale = scale,
+                                            scale_base = torch.cat([scale,scales_baseline[current_index]],dim = 1),
+                                            slice_index = current_index,
+                                            pr = quality, 
+                                            mask_pol = mask_pol)   
 
             index = self.gaussian_conditional.build_indexes(scale*block_mask)
             rv = self.gaussian_conditional.decompress(pr_strings, index)
@@ -784,6 +818,8 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
         y_hat_slices = []
         y_likelihood = []
 
+        scales_base = []
+
         for slice_index in range(self.num_slice_cumulative_list[0]):
             y_slice = y_slices[slice_index]
             idx = slice_index%self.num_slice_cumulative_list[0]
@@ -798,6 +834,8 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
             mu = mu[:, :, :y_shape[0], :y_shape[1]]  
             scale = self.cc_scale_transforms[idx](scale_support)#self.extract_scale(idx,slice_index,scale_support)
             scale = scale[:, :, :y_shape[0], :y_shape[1]]
+
+            scales_base.append(scale)
 
 
             _, y_slice_likelihood = self.gaussian_conditional(y_slice, scale, mu, training = training)
@@ -844,8 +882,12 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
             scale = self.cc_scale_transforms_prog[current_index](scale_support)#self.extract_scale(idx,slice_index,scale_support)
             scale = scale[:, :, :y_shape[0], :y_shape[1]]
 
-
-            block_mask = self.masking(scale,slice_index = current_index, pr = quality, mask_pol = mask_pol) #scale, slice_index = 0,  pr = 0, mask_pol = None
+            
+            block_mask = self.masking(scale,
+                                      scale_base = scales_base[current_index],
+                                      slice_index = current_index, 
+                                      pr = quality,
+                                        mask_pol = mask_pol) #scale, slice_index = 0,  pr = 0, mask_pol = None
             block_mask = self.masking.apply_noise(block_mask, False)
 
 
@@ -869,7 +911,7 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
 
 
 
-        y_likelihoods = torch.cat(y_likelihood_quality,dim = 1)
+        y_likelihoods = torch.cat(y_likelihood_quality,dim = 1) #ddddd
         y_hat = torch.cat(y_hat_slices_quality,dim = 1)  
     
         if self.multiple_decoder:

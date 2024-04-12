@@ -81,16 +81,16 @@ def train_one_epoch(counter,
         }
         wandb.log(wand_dict)
 
-        bpp_k = out_criterion["bpp_info_dict"]["bpp_loss.keyframe"].clone().detach().item()
-        bpp_m = out_criterion["bpp_info_dict"]["bpp_loss.motion"].clone().detach().item()
-        bpp_r = out_criterion["bpp_info_dict"]["bpp_loss.residual"].clone().detach().item()
+        bpp_k = out_criterion["bpp_info_dict"]["bpp_loss.keyframe"].mean().clone().detach().item()
+        bpp_m = out_criterion["bpp_info_dict"]["bpp_loss.motion"].mean().clone().detach().item()
+        bpp_r = out_criterion["bpp_info_dict"]["bpp_loss.residual"].mean().clone().detach().item()
         
         bpp_l_keyframe.update(bpp_k)
         bpp_l_motion.update(bpp_m)
         bpp_l_residual.update(bpp_r)
         mse_l.update(out_criterion["mse_loss"].mean().clone().detach().item())
-        bpp_l.update( out_criterion["bpp_loss"].clone().detach().item())
-        loss.update(out_criterion["loss"].clone().detach().item())
+        bpp_l.update( out_criterion["bpp_loss"].mean().clone().detach().item())
+        loss.update(out_criterion["loss"].mean().clone().detach().item())
         
         wand_dict = {
             "train_batch": counter,
@@ -148,9 +148,16 @@ def train_one_epoch(counter,
     wandb.log(log_dict)
 
     if scalable:
+
+
+        psnr_base = -10 * math.log10(mse_l_base.avg)
+        psnr_prog = -10 * math.log10(mse_l_prog.avg)
         log_dict = {
+            "train":epoch,
             "train/mse_base":mse_l_base.avg,
             "train/mse_prog":mse_l_prog.avg,
+            "train/psnr_base":psnr_base,
+            "train/psnr_prog":psnr_prog,
             "train/bpp_base":bpp_l_base.avg,
             "train/bpp_prog":bpp_l_prog.avg,
             "train/bpp_motion_prog":bpp_l_motion_prog.avg,
@@ -178,7 +185,9 @@ def valid_epoch(epoch, test_dataloader, model, criterion,scalable = False):
         bpp_l_motion_prog = AverageMeter()
         bpp_l_residual_prog = AverageMeter() 
         bpp_l_base = AverageMeter()
-        bpp_l_prog = AverageMeter()   
+        bpp_l_prog = AverageMeter()  
+        mse_l_base = AverageMeter()
+        mse_l_prog = AverageMeter() 
 
   
     with torch.no_grad():
@@ -214,6 +223,9 @@ def valid_epoch(epoch, test_dataloader, model, criterion,scalable = False):
                 bpp_l_base.update(out_criterion["bpp_base"])
                 bpp_l_prog.update(out_criterion["bpp_prog"])
 
+                mse_l_base.update(out_criterion["mse_base"].mean().clone().detach().item())
+                mse_l_prog.update(out_criterion["mse_prog"].mean().clone().detach().item())
+
     print(
         f"valid epoch {epoch}: Average losses:"
         f"\tLoss: {loss.avg:.3f} |"
@@ -234,6 +246,9 @@ def valid_epoch(epoch, test_dataloader, model, criterion,scalable = False):
     wandb.log(log_dict)
 
     if scalable:
+
+        psnr_base = -10*math.log10(mse_l_base.avg)
+        psnr_prog = -10*math.log10(mse_l_prog.avg)
         log_dict = {
                 "valid":epoch,
                 "valid/bpp_base":bpp_l_base.avg,
@@ -241,6 +256,12 @@ def valid_epoch(epoch, test_dataloader, model, criterion,scalable = False):
                 "valid/bpp_residual_prog":bpp_l_residual_prog.avg,
                 "valid/bpp_keyframe_prog":bpp_l_keyframe_prog.avg,
                 "valid/bpp_motion_prog":bpp_l_motion_prog.avg,
+                "valid/mse_base":mse_l_base.avg,
+                "valid/mse_prog":mse_l_prog.avg,
+                "valid/psnr_base":psnr_base.avg,
+                "valid/psnr_prog":psnr_prog.avg
+
+
                 }
         wandb.log(log_dict)  
     return loss.avg
@@ -282,11 +303,16 @@ def test_epoch(epoch, test_dataloader, model, criterion,scalable = False):
             loss.update(out_criterion["loss"])
             mse_loss.update(out_criterion["mse_loss"])
 
+            mse_loss_base = out_criterion["mse_base"].mean().clone().detach().item()
+            
 
-            psnr = compute_psnr_frames(out_net["x_hat"][0],d)
+            psnr = -10*math.log10(mse_loss_base)
+            #psnr = compute_psnr_frames(out_net["x_hat"][0],d)
             psnr_l.update(psnr)
             if scalable:
-                psnr = compute_psnr_frames(out_net["x_hat"][1],d)
+                mse_loss_prog =out_criterion["mse_prog"].mean().clone().detach().item()
+                psnr = -10*math.log10(mse_loss_prog)
+                #psnr = compute_psnr_frames(out_net["x_hat"][1],d)
                 psnr_l_prog.update(psnr)        
 
             bpp_k = out_criterion["bpp_info_dict"]["bpp_loss.keyframe"].clone().detach().item()

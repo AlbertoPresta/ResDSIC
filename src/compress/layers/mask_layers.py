@@ -154,6 +154,7 @@ class ChannelMask(nn.Module):
         self.num_levels = num_levels
         self.double_dim = double_dim
         if double_dim:
+            print("vado qua ")
             self.input_dim = self.dim_chunk*2
         else: 
             self.input_dim = self.dim_chunk
@@ -223,7 +224,7 @@ class ChannelMask(nn.Module):
                                     kernel_size=1, 
                                     stride=1),) for _ in range(self.scalable_levels -2)
                                     ) for _ in range(self.num_levels) )
-        elif self.mask_policy == "single-learnable-mask-nested":
+        if self.mask_policy == "single-learnable-mask-nested":
             self.mask_conv = nn.Sequential(
                             conv3x3(self.input_dim,self.dim_chunk),
                             nn.ReLU(),
@@ -234,7 +235,8 @@ class ChannelMask(nn.Module):
                             conv3x3(self.input_dim,self.dim_chunk),
                             nn.Sigmoid()                           
                             ) 
-        elif self.mask_policy == "three-levels-learnable":
+        
+        if self.mask_policy == "three-levels-learnable":
             self.mask_conv = nn.Sequential(
                             conv3x3(self.input_dim,self.dim_chunk),
                             nn.ReLU(),
@@ -258,7 +260,7 @@ class ChannelMask(nn.Module):
 
     def forward(self,
                 scale,  
-                scale_prog = None, 
+                scale_base = None, 
                 slice_index = 0,  
                 pr = 0, 
                 mask_pol = None):
@@ -287,6 +289,24 @@ class ChannelMask(nn.Module):
             res = scale >= quantile 
             return res.reshape(bs,ch,w,h).to(torch.float).to(scale.device)
 
+        if mask_pol == "point-based-double-std":
+            if pr == 10:
+                return torch.ones_like(scale).to(scale.device)
+            elif pr == 0:
+                return torch.zeros_like(scale).to(scale.device)
+            shapes = scale.shape
+            bs, ch, w,h = shapes
+            assert scale is not None 
+            assert scale_base is not None 
+            pr = pr*0.1  
+            pr = 1 -pr 
+            scale = scale.ravel()
+            scale_base = scale_base.ravel()
+            scale_t = scale + scale_base
+            quantile = torch.quantile(scale_t, pr)
+            res = scale_t >= quantile 
+            return res.reshape(bs,ch,w,h).to(torch.float).to(scale.device)
+
         elif mask_pol == "two-levels":
             return torch.zeros_like(scale).to(scale.device) if pr == 0 else torch.ones_like(scale).to(scale.device)
         elif mask_pol == "three-levels-std":
@@ -309,8 +329,8 @@ class ChannelMask(nn.Module):
             elif pr == 2:
                 return torch.ones_like(scale).to(scale.device)
             else:
-                scale_input = torch.cat([scale,scale_prog],dim = 1) if self.double_dim else scale
-                importance_map =  self.mask_conv(scale_input)
+                assert scale_base is not None
+                importance_map =  self.mask_conv(scale_base)
                 return ste_round(importance_map)
 
                
@@ -324,7 +344,7 @@ class ChannelMask(nn.Module):
             pr = 1 - pr
             shapes = scale.shape
             bs, ch, w,h = shapes
-            scale_input = torch.cat([scale,scale_prog],dim = 1) if self.double_dim else scale
+            scale_input = torch.cat([scale,scale_base],dim = 1) if self.double_dim else scale
             importance_map =  self.mask_conv(scale_input)
 
 
@@ -344,7 +364,7 @@ class ChannelMask(nn.Module):
             pr = 1 - pr
             shapes = scale.shape
             bs, ch, w,h = shapes
-            scale_input = torch.cat([scale,scale_prog],dim = 1) if self.double_dim else scale
+            scale_input = torch.cat([scale,scale_base],dim = 1) if self.double_dim else scale
             importance_map =  self.mask_conv[slice_index](scale_input) 
 
             importance_map = importance_map.ravel()
@@ -360,7 +380,7 @@ class ChannelMask(nn.Module):
                 return torch.ones_like(scale).to(scale.device)
 
             
-            scale_input = torch.cat([scale,scale_prog],dim = 1) if self.double_dim else scale
+            scale_input = torch.cat([scale,scale_base],dim = 1) if self.double_dim else scale
             importance_map =  self.mask_conv(scale_input) 
 
             #importance_map = torch.sigmoid(importance_map) 
@@ -379,7 +399,7 @@ class ChannelMask(nn.Module):
                 return torch.ones_like(scale).to(scale.device)
 
 
-            scale_input = torch.cat([scale,scale_prog],dim = 1) if self.double_dim else scale
+            scale_input = torch.cat([scale,scale_base],dim = 1) if self.double_dim else scale
             importance_map =  self.mask_conv[slice_index](scale_input) 
 
             importance_map = torch.sigmoid(importance_map) 
@@ -399,7 +419,7 @@ class ChannelMask(nn.Module):
             if pr >= self.scalable_levels - 1:
                 return torch.ones_like(scale).to(scale.device)
 
-            scale_input = torch.cat([scale,scale_prog],dim = 1) if self.double_dim else scale 
+            scale_input = torch.cat([scale,scale_base],dim = 1) if self.double_dim else scale 
             importance_map =torch.sum(torch.stack([torch.sigmoid(self.mask_conv[i](scale_input)) for i in range(pr)],dim = 0),dim = 0) 
   
             return importance_map   

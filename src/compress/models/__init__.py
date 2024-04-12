@@ -108,6 +108,7 @@ def get_model(args,device, lmbda_list):
                                 mask_policy = args.mask_policy,
                                 joiner_policy = args.joiner_policy,
                                 support_progressive_slices =args.support_progressive_slices,
+                                double_dim = args.double_dim,
                                 shared_entropy_estimation = False
                         )  
     elif args.model == "progressive_res":

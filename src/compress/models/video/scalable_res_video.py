@@ -20,6 +20,8 @@ class ResScalableScaleSpaceFlow(ScaleSpaceFlow):
         mask_policy = "two-levels",
         multiple_res_encoder = True, 
         multiple_res_decoder = True,
+        multiple_motion_encoder = True,
+        multiple_motion_decoder = True,
         scalable_levels = 2,
         double_dim = False
     ):
@@ -31,6 +33,8 @@ class ResScalableScaleSpaceFlow(ScaleSpaceFlow):
         self.mask_policy = mask_policy 
         self.multiple_res_encoder = multiple_res_encoder
         self.multiple_res_decoder = multiple_res_decoder
+        self.multiple_motion_encoder = multiple_motion_encoder 
+        self.multiple_motion_decoder = multiple_motion_decoder
         self.scalable_levels = scalable_levels 
         self.double_dim = double_dim
         self.quality_list = [0,1]
@@ -42,10 +46,29 @@ class ResScalableScaleSpaceFlow(ScaleSpaceFlow):
                             if self.multiple_res_decoder \
                             else Decoder(3,factor=2,in_planes=384)
         
+
+        self.motion_encoder = nn.ModuleList(Encoder(2*3) for _ in range(2))    \
+                                if self.multiple_motion_encoder \
+                                    else Encoder(2*3,factor = 2)
         
+        self.motion_decoder = nn.ModuleList( Decoder(3) for _ in range(2))\
+                                 if self.multiple_motion_decoder   \
+                                      else Decoder(3, factor = 2)
+        
+
+        if self.multiple_motion_encoder:
+            self.motion_hyperprior = HyperpriorMasked(factor = 2,
+                                                       mask_policy=mask_policy,
+                                                       scalable_levels=scalable_levels)
+                
         self.res_hyperprior = HyperpriorMasked(factor = 2, 
                                                mask_policy=mask_policy,
                                                scalable_levels=scalable_levels)
+        
+
+        self.forward_prediction = nn.ModuleList( Decoder(3) for _ in range(2))\
+                                 if self.multiple_motion_decoder   \
+                                      else Decoder(3, factor = 2)
         
 
     def define_quality(self,quality):
@@ -78,8 +101,6 @@ class ResScalableScaleSpaceFlow(ScaleSpaceFlow):
         x_hat, likelihoods = self.forward_keyframe(frames[0]) # I-encoder! modeled as normal frame compression algorithm (choose a good one)
 
         
-
-
         reconstructions_base.append(x_hat)
         reconstructions_prog.append(x_hat)
         frames_likelihoods_base.append(likelihoods)
@@ -112,20 +133,40 @@ class ResScalableScaleSpaceFlow(ScaleSpaceFlow):
     def forward_inter(self, x_cur, x_ref,quality,mask_pol,training):
         # encode the motion information
         x_b = torch.cat((x_cur, x_ref[0]), dim=1) # cat the input 
-        y_motion_b = self.motion_encoder(x_b) # scale space flow enoder, da aumentare 
-        y_motion_hat_b, motion_likelihoods_b = self.motion_hyperprior(y_motion_b) # hyperprior, da lasciare in comune?
-
         x_p = torch.cat((x_cur, x_ref[1]), dim=1) # cat the input 
-        y_motion_p = self.motion_encoder(x_p) # scale space flow enoder, da aumentare 
-        y_motion_hat_p, motion_likelihoods_p = self.motion_hyperprior(y_motion_p)
+        y_motion_b = self.motion_encoder[0](x_b) if self.multiple_motion_encoder \
+                                                else self.motion_encoder(x_b) # scale space flow enoder, da aumentare 
+        
+        
+        y_motion_p = self.motion_encoder[1](x_p) if self.multiple_motion_encoder \
+                                                else self.motion_encoder(x_p) #
+        y_motion = torch.cat([y_motion_b,y_motion_p],dim = 1)
+
+        y_motion_hat, motion_likelihoods = self.forward_block(y_motion,
+                                                        y_motion_b,
+                                                        y_motion_p,
+                                                        self.motion_hyperprior,
+                                                        training,
+                                                        mask_pol,
+                                                        quality)
 
 
-        # decode the space-scale flow information
-        motion_info_b = self.motion_decoder(y_motion_hat_b) # scale space flow Decoder 
+
+        y_motion_hat_b,y_motion_hat_p = y_motion_hat[0],y_motion_hat[1]
+        z_likelihoods_motion = motion_likelihoods[0]
+        motion_likelihoods_b = motion_likelihoods[1]
+        motion_likelihoods_p = motion_likelihoods[2]
+        #y_motion_hat_b, motion_likelihoods_b = self.motion_hyperprior(y_motion_b) # hyperprior, da lasciare in comune?
+
+
+        motion_info_b = self.motion_decoder[0](y_motion_hat_b) if self.multiple_motion_decoder \
+                                                            else self.motion_decoder(y_motion_hat_b)
+        
+        motion_info_p = self.motion_decoder[1](y_motion_hat_p) if self.multiple_motion_decoder \
+                                                            else self.motion_decoder(y_motion_hat_p)
+        
         x_pred_b = self.forward_prediction(x_ref[0], motion_info_b) # scale space warping
 
-        # decode the space-scale flow information
-        motion_info_p = self.motion_decoder(y_motion_hat_p) # scale space flow Decoder 
         x_pred_p = self.forward_prediction(x_ref[1], motion_info_p) # scale space warping
 
         # residual
@@ -137,6 +178,8 @@ class ResScalableScaleSpaceFlow(ScaleSpaceFlow):
         y_res_p = self.res_encoder[1](x_res_p) if self.multiple_res_encoder \
                                                 else  self.res_encoder(x_res_p) 
         
+
+
         y_res = torch.cat([y_res_b,y_res_p],dim = 1)
 
         y_hat_res, likelihoods_res = self.forward_block(y_res,
@@ -166,12 +209,12 @@ class ResScalableScaleSpaceFlow(ScaleSpaceFlow):
         
         
 
-        # final reconstruction: prediction + residual
         x_rec_p = x_pred_p + x_res_hat_p # final reconstruction
 
         x_rec = [x_rec_b,x_rec_p]
 
-        base_likelihoods = {"motion": motion_likelihoods_b,
+        base_likelihoods = {"motion": {"y":motion_likelihoods_b,
+                                       "z":z_likelihoods_motion},
                             "residual": {
                                 "y":y_likelihoods_res_b,
                                 "z":z_likelihoods_res
@@ -180,7 +223,8 @@ class ResScalableScaleSpaceFlow(ScaleSpaceFlow):
                             
 
 
-        prog_likelihoods = {"motion": motion_likelihoods_p,
+        prog_likelihoods = {"motion": {"y":motion_likelihoods_p,
+                                       "z":z_likelihoods_motion},
                             "residual": {
                                 "y":y_likelihoods_res_p,
                                 "z":z_likelihoods_res
@@ -306,8 +350,6 @@ class ResScalableScaleSpaceFlow(ScaleSpaceFlow):
 
         return x_rec
     
-
-
 
     def decompress(self, strings, shapes, quality, mask_pol):
         if not isinstance(strings, List) or not isinstance(shapes, List):

@@ -4,9 +4,10 @@ import argparse
 from compress.models import models, video_models
 
 def parse_args_eval(argv):
-    parser = argparse.ArgumentParser(description="Example training script.") #dddd
+    parser = argparse.ArgumentParser(description="Example training script.") #dddddddd
     parser.add_argument("--path",type=str,default = "/scratch/ResDSIC/models/")
     parser.add_argument("--model",type=str,default = "/_very_best.pth.tar")
+    parser.add_argument("--mask_policy",type=str,default = "point-based-double-std")
     parser.add_argument("--checkpoint",  nargs='+', type=str, default = ["res_m4_pret_005_05_memd_frozen",
                                                                          "res_m2_md",
                                                                          "res_m4_005_05_encdec",
@@ -96,7 +97,7 @@ def parse_args(argv):
     parser.add_argument("-n","--num-workers",type=int,default=8,help="Dataloaders threads (default: %(default)s)",)
     #dddd
 
-    parser.add_argument("--lambda_list",dest="lmbda_list", nargs='+', type=float, default = [ 0.005, 0.01, 0.050])
+    parser.add_argument("--lambda_list",dest="lmbda_list", nargs='+', type=float, default = [ 0.004, 0.015, 0.06])
     parser.add_argument("--division_dimension", nargs='+', type=int, default = [320, 640])
     parser.add_argument("--inner_dimensions", nargs='+', type=int, default = [192, 192])
     parser.add_argument("--list_quality", nargs='+', type=int, default = [0])
@@ -139,7 +140,7 @@ def parse_args(argv):
     parser.add_argument("--joiner_policy", type=str, default = "res",help="Path to a checkpoint") 
     parser.add_argument("--clip_max_norm",default=1.0,type=float,help="gradient clipping max norm (default: %(default)s",)
     parser.add_argument("--checkpoint", type=str, default = "none")
-    parser.add_argument("--checkpoint_base", type=str, default =  "q2",help="Path to a checkpoint") #"/scratch/base_devil/weights/q2/model.pth"
+    parser.add_argument("--checkpoint_base", type=str, default =  "none",help="Path to a checkpoint") #"/scratch/base_devil/weights/q2/model.pth"
     parser.add_argument("--checkpoint_enh", type=str, default =  "none",help="Path to a checkpoint") #"/scratch/base_devil/weights/q5/model.pth"
     parser.add_argument("--tester", action="store_true", help="use common lrp for progressive")
     parser.add_argument("--support_progressive_slices",default=4,type=int,help="support_progressive_slices",) #ssss

@@ -148,8 +148,6 @@ def main(argv):
         progressive = False
 
 
-
-
     if args.cuda and torch.cuda.device_count() > 1:
         net = CustomDataParallel(net)
 
@@ -164,10 +162,6 @@ def main(argv):
     
 
     criterion = ScalableRateDistortionLoss(lmbda_list=args.lmbda_list)
-
-
-
-
 
     if args.checkpoint != "none" and args.continue_training:
         print("entro qua e continuo il training")
