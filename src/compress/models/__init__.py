@@ -27,6 +27,7 @@ from .tcm.scalable import ResTCM
 from .scalable.utils import initialize_model_from_pretrained
 from .video.google import ScaleSpaceFlow
 from .video.scalable_video import ScalableScaleSpaceFlow
+from .video.scalable_res_video import ResScalableScaleSpaceFlow
 
 
 models = {
@@ -45,7 +46,9 @@ models = {
 }
 
 
-video_models = {"ssf":ScaleSpaceFlow, "scalablessf":ScalableScaleSpaceFlow}
+video_models = {"ssf":ScaleSpaceFlow, 
+                "full":ScalableScaleSpaceFlow,
+                "res":ResScalableScaleSpaceFlow}
 
 def get_model(args,device, lmbda_list):
 
@@ -131,8 +134,6 @@ def get_model(args,device, lmbda_list):
                                 M = args.M,
                                 mask_policy = args.mask_policy,
                                 lmbda_list = lmbda_list,
-                                lrp_prog = args.lrp_prog,
-                                independent_lrp = args.ind_lrp,
                                 multiple_decoder = args.multiple_decoder,
                                 joiner_policy = args.joiner_policy
                                 )

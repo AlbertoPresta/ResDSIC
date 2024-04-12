@@ -10,6 +10,7 @@ from compress.datasets.utils import  TestKodakDataset
 from compress.models import get_model
 from compress.utils.plot import plot_rate_distorsion, plot_decoded_time
 import numpy as np
+from compress.result_list import *
 
 from compress.models import ChannelProgresssiveWACNN, WACNN, initialize_model_from_pretrained
 import seaborn as sns
@@ -22,21 +23,23 @@ torch.backends.cudnn.benchmark=False
 
 from collections import OrderedDict
 
-def replace_keys(checkpoint):
+def replace_keys(checkpoint, multiple_encoder):
     # Creiamo un nuovo OrderedDict con le chiavi modificate all'interno di un ciclo for
     nuovo_ordered_dict = OrderedDict()
     for chiave, valore in checkpoint.items():
-        if "g_a_enh." in chiave : 
-            
-            nuova_chiave = chiave.replace("g_a_enh.", "g_a.1.")
-            nuovo_ordered_dict[nuova_chiave] = valore
-        elif "g_a." in chiave and "g_a.0." not in chiave: 
-            nuova_chiave = chiave.replace("g_a.", "g_a.0.")
-            nuovo_ordered_dict[nuova_chiave] = valore  
-        else: 
-            nuovo_ordered_dict[chiave] = valore   
+        if multiple_encoder:
+            if "g_a_enh." in chiave: 
+                
+                nuova_chiave = chiave.replace("g_a_enh.", "g_a.1.")
+                nuovo_ordered_dict[nuova_chiave] = valore
+            elif "g_a." in chiave and "g_a.0.1.beta" not in list(checkpoint.keys()): 
+                nuova_chiave = chiave.replace("g_a.", "g_a.0.")
+                nuovo_ordered_dict[nuova_chiave] = valore  
+            else: 
+                nuovo_ordered_dict[chiave] = valore   
+        else:
+            nuovo_ordered_dict[chiave] = valore  
     return nuovo_ordered_dict      
-
 
 def main(argv):
     args = parse_args_eval(argv)
@@ -61,7 +64,7 @@ def main(argv):
 
 
     lmbda_list = new_args.lmbda_list
-    wandb.init( config= new_args, project="EVAL", entity="albipresta")   
+    wandb.init( config= args, project="EVAL", entity="albipresta")  #dddd 
 
     if new_args.seed is not None:
         torch.manual_seed(new_args.seed)
@@ -83,8 +86,8 @@ def main(argv):
     #net = WACNN()
     
     
-    checkpoint_model = checkpoint["state_dict"]# replace_keys(checkpoint["state_dict"])
-    net.load_state_dict(checkpoint_model ,strict = True) #dddfffffffff
+    checkpoint_model = replace_keys(checkpoint["state_dict"],multiple_encoder=new_args.multiple_encoder)
+    net.load_state_dict(checkpoint_model ,strict = True) 
     #net.load_state_dict(checkpoint,strict = True)
     net.update() 
 
@@ -111,9 +114,17 @@ def main(argv):
 
     list_pr = list_pr_1 + list_pr_2
 
-    list_pr = [0,3,10]
 
-    
+    psnr_res = {}
+    bpp_res = {}
+    decoded_time = {}
+
+    name_dict = {"res_m4_pret_005_05_memd_frozen":"m4_pret_frozen",
+                 "res_m4_005_06_encdec_blocked_kd9":"m4_pret_frozen_kd",
+                 "res_m4_005_05_encdec":"m4_memd_005",
+                 "res_m4_0025_05_encdec":"m4_memd_0025",
+                 "res_m4_0035_05_encdec_k9":"me_memd_kd",
+                 "res_m2_md":"m2_md"}  
 
     mask_pol ="point-based-std"
     bpp, psnr,dec_time = compress_with_ac(net,  
@@ -132,129 +143,22 @@ def main(argv):
     bpp_res = {}
     decoded_time = {}
 
-    decoded_time["our"] = dec_time
+    bpp_res[name_dict[args.checkpoint[0]]] = bpp
+    psnr_res[name_dict[args.checkpoint[0]]] = psnr
+    decoded_time[name_dict[args.checkpoint[0]]] = dec_time
 
-    decoded_time["tri_planet_23"] = [2.3024718718869344, 
-                                     2.426101867109537,
-                                      2.55243898762597, 
-                                     2.662715111176173, 
-                                    2.55243898762597, 
-                                     2.662715111176173,
-                                     2.7725952692104108, 
-                                     2.8762405349148645, 
-                                     2.9079313476880393, 
-                                     2.980673296329303, 
-                                     9.18038641413053, 
-                                     6.93557970225811, 
-                                     6.211363573869069, 
-                                     5.869887267549832, 
-                                     5.676065286000569, 
-                                     5.4823808045614335, 
-                                     5.5328710553822695, 
-                                     5.56682376563549]
-    bpp_res["our"] = bpp
-    psnr_res["our"] = psnr
 
     psnr_res["base"] =   [29.20, 30.59,32.26,34.15,35.91,37.72]
     bpp_res["base"] =  [0.127,0.199,0.309,0.449,0.649,0.895]
 
     
-    bpp_res["tri_planet_23"] = [0.19599018399677576, 
-                                0.2160843743218315, 
-                                 0.23966546706211406, 
-                                 0.2649169921874998,
-                                 0.290478022411616, 
-                                0.31530394377531823,
-                                0.3386248727130074,
-                                0.3715,
-                                0.4549,
-                                0.503,
-                                0.6184760199652779, 
-                                0.622775607638889, 
-                                0.6264399775752316, 
-                                0.629531012641059,
-                                0.6320909288194444, 
-                                0.6358637734064978, 
-                                0.6489329396942514, 
-                                0.6606713189019093]
-
-    
-    psnr_res["tri_planet_23"] = [29.966779946152272, 
-                                 30.245813808118623, 
-                                 30.57321667041242, 
-                                 30.91983179476929,
-                                 31.261272444242884,
-                                  31.581467860369358, 
-                                  31.871966073681232,
-                                  32.4049,
-                                  33.556,
-                                  34.184, 
-                                35.35794463342364,
-                                    35.387717967053526, 
-                                    35.41157437546917, 
-                                    35.43059575484415,
-                                    35.445527093923985, 
-                                    35.46594985204121, 
-                                    35.526434249041614, 
-                                    35.58748106931754]
-
+    bpp_res["tri_planet_23"] =  tri_planet_23_bpp
+    psnr_res["tri_planet_23"] = tri_planet_23_psnr
+    decoded_time["tri_planet_23"] = dec_time_tri_planet_23 
         
-    bpp_res["tri_planet_22"] = [0.660875109,
-                             0.655721029	
-                             ,0.64996677	
-                             ,0.64375813,
-                        0.636986627	,
-                        0.629737006	,
-                        0.621955024	,
-                        0.613691542	,
-                        0.604977078	,
-                        0.595689562	,
-                        0.585951063	,
-                        0.575720893	,
-                        0.564975315	,
-                        0.553833008	,
-                        0.542127821	,
-                        0.530036079	,
-                        0.517506917	,
-                        0.504621718	,
-                        0.491258409	,
-                        0.477579753	,
-                        0.463487413	,
-                        0.449042426	,
-                        0.434268528	,
-                        0.419165717	,
-                        0.403811985	,
-                        0.388197157	,
-                        0.372334798	,
-    ][::-1]
+    bpp_res["tri_planet_22"] = tri_planet_22_bpp
+    psnr_res["tri_planet_22"] = tri_planet_22_psnr
 
-    psnr_res["tri_planet_22"] = [34.80704198,
-                            34.76644063,
-                            34.71799054,
-                            34.66435169,
-                            34.60298681,
-                            34.53566738,
-                            34.46155532,
-                            34.3790979,
-                            34.28852354,
-                            34.19085494,
-                            34.08420287,
-                            33.96759937,
-                            33.84475605,
-                            33.71422386,
-                            33.57031665,
-                            33.42045507,
-                            33.26175287,
-                            33.09296812,                  
-                            32.91922032,
-                            32.73944584,
-                            32.55061685,
-                            32.35301494,
-                            32.15103617,
-                            31.94190188,
-                            31.73074372,
-                            31.51412129,
-                            31.43688091][::-1]
 
     plot_rate_distorsion(bpp_res, psnr_res,0, eest="compression")
 

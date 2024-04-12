@@ -75,6 +75,8 @@ def train_one_epoch(counter,
             "train_batch": counter,
             "train_batch/loss": out_criterion["loss"].clone().detach().item(),
             "train_batch/bpp_total": out_criterion["bpp_loss"].clone().detach().item(),
+            "train_batch/bpp_base":out_criterion["bpp_base"].mean().clone().detach().item(),
+            "train_batch/bpp_prog":out_criterion["bpp_prog"].mean().clone().detach().item(),
             "train_batch/mse":out_criterion["mse_loss"].mean().clone().detach().item(),
         }
         wandb.log(wand_dict)
@@ -106,7 +108,6 @@ def train_one_epoch(counter,
             
             bpp_l_keyframe.update(bpp_k)
             bpp_l_motion.update(bpp_m)
-            bpp_l_residual.update(bpp_r)
             bpp_l_keyframe_prog.update(bpp_k_prog)
             bpp_l_motion_prog.update(bpp_m_prog)
             bpp_l_residual_prog.update(bpp_r_prog)
@@ -142,7 +143,7 @@ def train_one_epoch(counter,
         "train/mse": mse_l.avg,
         "train/bpp_keyframe":bpp_l_keyframe.avg,
         "train/bpp_motion":bpp_l_motion.avg,
-        "train/bpp_residual":bpp_l_residual.avg
+        "train/bpp_residual_base":bpp_l_residual.avg
         }
     wandb.log(log_dict)
 
@@ -152,9 +153,9 @@ def train_one_epoch(counter,
             "train/mse_prog":mse_l_prog.avg,
             "train/bpp_base":bpp_l_base.avg,
             "train/bpp_prog":bpp_l_prog.avg,
-            "train/bpp_keyframe_prog":bpp_l_keyframe_prog.avg,
             "train/bpp_motion_prog":bpp_l_motion_prog.avg,
             "train/bpp_residual_prog":bpp_l_residual_prog.avg
+
             }
         wandb.log(log_dict)   
 
@@ -213,10 +214,6 @@ def valid_epoch(epoch, test_dataloader, model, criterion,scalable = False):
                 bpp_l_base.update(out_criterion["bpp_base"])
                 bpp_l_prog.update(out_criterion["bpp_prog"])
 
-                   
-
-
-
     print(
         f"valid epoch {epoch}: Average losses:"
         f"\tLoss: {loss.avg:.3f} |"
@@ -224,8 +221,6 @@ def valid_epoch(epoch, test_dataloader, model, criterion,scalable = False):
         f"\tBpp loss: {bpp_loss.avg:.2f} |"
         f"\tAux loss: {aux_loss.avg:.2f}\n"
     )
-
-
     log_dict = {
             "valid":epoch,
             "valid/loss": loss.avg,
@@ -233,7 +228,7 @@ def valid_epoch(epoch, test_dataloader, model, criterion,scalable = False):
             "valid/mse": mse_loss.avg,
             "valid/bpp_keyframe":bpp_l_keyframe.avg,
             "valid/bpp_motion":bpp_l_motion.avg,
-            "valid/bpp_residual":bpp_l_residual.avg,
+            "valid/bpp_residual_base":bpp_l_residual.avg,
             }
 
     wandb.log(log_dict)
@@ -243,13 +238,11 @@ def valid_epoch(epoch, test_dataloader, model, criterion,scalable = False):
                 "valid":epoch,
                 "valid/bpp_base":bpp_l_base.avg,
                 "valid/bpp_prog":bpp_l_prog.avg,
+                "valid/bpp_residual_prog":bpp_l_residual_prog.avg,
                 "valid/bpp_keyframe_prog":bpp_l_keyframe_prog.avg,
                 "valid/bpp_motion_prog":bpp_l_motion_prog.avg,
-                "valid/bpp_residual_prog":bpp_l_residual_prog.avg,
                 }
-
         wandb.log(log_dict)  
-
     return loss.avg
 
 
@@ -309,8 +302,7 @@ def test_epoch(epoch, test_dataloader, model, criterion,scalable = False):
                 bpp_m_prog = out_criterion["bpp_info_dict_prog"]["bpp_loss.motion"].clone().detach().item()
                 bpp_r_prog = out_criterion["bpp_info_dict_prog"]["bpp_loss.residual"].clone().detach().item()
                 
-                
-                
+            
                 bpp_l_keyframe_prog.update(bpp_k_prog)
                 bpp_l_motion_prog.update(bpp_m_prog)
                 bpp_l_residual_prog.update(bpp_r_prog)

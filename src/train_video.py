@@ -13,6 +13,7 @@ from compress.utils.functions import  create_savepath
 
 from compress.training.video.step import train_one_epoch, valid_epoch, test_epoch
 from compress.training.video.video_loss import  RateDistortionLoss, ScalableRateDistortionLoss
+from compress.training.video.scalable_res_loss import ScalableResRateDistortionLoss
 from compress.datasets import Vimeo90kDataset
 from compress.utils.parser import parse_args_video
 from compress.models import video_models
@@ -136,8 +137,10 @@ def main(argv):
     optimizer, aux_optimizer = configure_optimizers(net, args)
     lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, "min")
 
-    if scalable:
+    if args.model == "full":
         criterion = ScalableRateDistortionLoss(lmbda=args.lmbda, return_details=True)
+    elif args.model == "res":
+        criterion =  ScalableRateDistortionLoss(lmbda=args.lmbda, return_details=True)
     else:
         criterion = RateDistortionLoss(lmbda=args.lmbda[-1], return_details=True)
 

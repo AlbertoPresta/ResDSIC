@@ -5,11 +5,6 @@ import torch
 import torch.nn as nn
 
 
-
-
-
-
-
 def collect_likelihoods_list(likelihoods_list, num_pixels: int):
     bpp_info_dict = defaultdict(int)
     bpp_loss = 0
@@ -30,9 +25,12 @@ def collect_likelihoods_list(likelihoods_list, num_pixels: int):
                 label_bpp += bpp
 
                 bpp_info_dict[f"bpp_loss.{label}"] += bpp.sum()
+                bpp_info_dict[f"bpp_loss.{label}.{field}"] += bpp.sum() #dddd
                 bpp_info_dict[f"bpp_loss.{label}.{i}.{field}"] = bpp.sum()
             bpp_info_dict[f"bpp_loss.{label}.{i}"] = label_bpp.sum()
         bpp_info_dict[f"bpp_loss.{i}"] = frame_bpp.sum() #ddddd
+    
+    bpp_info_dict[f"bpp_loss_total"] = bpp_loss
     return bpp_loss, bpp_info_dict
 
 
@@ -137,16 +135,20 @@ class RateDistortionLoss(nn.Module):
 
         # collect bpp info on noisy tensors (estimated differentiable entropy)
         bpp_loss, bpp_info_dict = collect_likelihoods_list(likelihoods_list, num_pixels)
-        #if self.return_details:
         #out.update(bpp_info_dict)  # detailed bpp: per frame, per latent, etc...
         
+        for k,v in bpp_info_dict.item():
+            bpp_info_dict[k] = v.mean()
         out["bpp_info_dict"] = bpp_info_dict
 
         # now we either use a fixed lambda or try to balance between 2 lambdas
         # based on a target bpp.
         lambdas = torch.full_like(bpp_loss, self.lmbda)
 
+
+        out["bpp_loss"] = bpp_loss
         bpp_loss = bpp_loss.mean()
+        out["bpp_loss_mean"] = bpp_loss
         out["loss"] = (lambdas * scaled_distortions).mean() + bpp_loss
 
         out["distortion"] = scaled_distortions.mean()
@@ -224,7 +226,7 @@ class ScalableRateDistortionLoss(nn.Module):
             )
 
     def forward(self, output, target):
-        assert isinstance(target, type(output["x_hat"])) #dddd
+        #assert isinstance(target, type(output["x_hat"])) #dddd
         #assert len(output["x_hat"]) == len(target)
 
         #self._check_tensors_list(target)
@@ -250,7 +252,6 @@ class ScalableRateDistortionLoss(nn.Module):
             distortions_prog.append(distortion_prog)
             scaled_distortions_prog.append(scaled_distortion_prog)
 
-
         # aggregate (over batch and frame dimensions).
         out["mse_base"] = torch.stack(distortions_base).mean()
         out["mse_prog"] = torch.stack(distortions_prog).mean()
@@ -258,11 +259,9 @@ class ScalableRateDistortionLoss(nn.Module):
         # average scaled_distortions accros the frames
         scaled_distortions_base = sum(scaled_distortions_base) / num_frames
         scaled_distortions_prog = sum(scaled_distortions_prog) / num_frames
-
         
         likelihoods_list_base = output["likelihoods_base"]
         likelihoods_list_prog = output["likelihoods_prog"]
-
 
         # collect bpp info on noisy tensors (estimated differentiable entropy)
         bpp_loss_base, bpp_info_dict_base = collect_likelihoods_list(likelihoods_list_base,
@@ -271,23 +270,37 @@ class ScalableRateDistortionLoss(nn.Module):
         bpp_loss_prog, bpp_info_dict_prog = collect_likelihoods_list(likelihoods_list_prog,
                                                                       num_pixels)
 
+
+        for k,v in bpp_info_dict_base.items():
+            bpp_info_dict_base[k] = v.mean()
+
+        for k,v in bpp_info_dict_prog.items():
+            bpp_info_dict_prog[k] = v.mean()
         
         out["bpp_info_dict"] = bpp_info_dict_base
         out["bpp_info_dict_prog"] = bpp_info_dict_prog
 
-        # now we either use a fixed lambda or try to balance between 2 lambdas
+
+        #print("PRENDIAMO IL BASE:",bpp_loss_base)
+        #print(bpp_info_dict_base)
+
+        # now we either use a fixed lambda or try to balance between 2 lambdas #dddd
         # based on a target bpp.
         lambdas_base = torch.full_like(bpp_loss_base, self.lmbda[0])
         lambdas_prog = torch.full_like(bpp_loss_prog, self.lmbda[1])
 
+
+
+        out["bpp_loss_totality"] = bpp_loss_base + bpp_loss_prog
         bpp_loss_base = bpp_loss_base.mean()
         bpp_loss_prog = bpp_loss_prog.mean()
+        out["bpp_loss"] = bpp_loss_base + bpp_loss_prog
         out["bpp_base"] = bpp_loss_base
         out["bpp_prog"] = bpp_loss_prog
         out["bpp_total"] = bpp_loss_base + bpp_loss_prog
-        out["bpp_loss"] = bpp_loss_base + bpp_loss_prog
-        out["loss_base"] = (lambdas_base * scaled_distortions_base).mean() + out["bpp_base"]
-        out["loss_prog"] = (lambdas_prog * scaled_distortions_prog).mean() + out["bpp_prog"]
+        
+        out["loss_base"] = (lambdas_base * scaled_distortions_base).mean() + bpp_loss_base
+        out["loss_prog"] = (lambdas_prog * scaled_distortions_prog).mean() + bpp_loss_prog
         out["loss"] = out["loss_prog"] + out["loss_base"]
         out["distortion_base"] = scaled_distortions_base.mean()
         out["distortion_prog"] = scaled_distortions_prog.mean()

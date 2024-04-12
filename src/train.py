@@ -26,10 +26,6 @@ def sec_to_hours(seconds):
     print(d[0])
 
 
-
-
-
-
 class CustomDataParallel(nn.DataParallel):
     """Custom DataParallel to access the module methods."""
 
@@ -54,9 +50,6 @@ def configure_optimizers(net, args):
         for n, p in net.named_parameters()
         if n.endswith(".quantiles") and p.requires_grad
     }
-
-
-
 
 
     # Make sure we don't have an intersection of parameters
@@ -96,11 +89,15 @@ def main(argv):
     args = parse_args(argv)
     print(args)
 
+
+    dict_base_model = {"q2":"/scratch/base_devil/weights/q2/model.pth",
+                       "q5":"/scratch/base_devil/weights/q5/model.pth"}
+
     
     if  args.model == "restcm": 
         wandb.init( config= args, project="ResDSIC-tcm", entity="albipresta") 
     else:
-        wandb.init( config= args, project="ResDSIC-dsic", entity="albipresta")   
+        wandb.init( config= args, project="ResDSIC-mask", entity="albipresta")  #dddd  
     if args.seed is not None:
         torch.manual_seed(args.seed)
         random.seed(args.seed)
@@ -193,7 +190,8 @@ def main(argv):
         net.load_state_dict(checkpoint["state_dict"], strict=True)
     elif args.checkpoint_base != "none":
 
-        base_checkpoint = torch.load(args.checkpoint_base,map_location=device)
+        checkpoin_base_model = dict_base_model(args.checkpoint_base)
+        base_checkpoint = torch.load(checkpoin_base_model,map_location=device)
         new_check = initialize_model_from_pretrained(base_checkpoint, args.multiple_hyperprior)
         net.load_state_dict(new_check,strict = False)
         net.update() 
@@ -245,7 +243,11 @@ def main(argv):
                                       sampling_training = args.sampling_training)
             
         print("finito il train della epoca")
-        loss = valid_epoch(epoch, valid_dataloader,criterion, net, pr_list = [0,1], progressive=progressive)
+        pr_list = [0,1] if "three-levels" not in net.mask_policy else [0,1,2]
+        loss = valid_epoch(epoch, 
+                           valid_dataloader,
+                           criterion, 
+                           net, pr_list = pr_list, progressive=progressive)
         print("finito il valid della epoca")
         if "tcm" in args.model:
             lr_scheduler.step()
@@ -264,18 +266,6 @@ def main(argv):
             list_pr = [0,1,2,3]  if  "learnable-mask" in args.mask_policy  else [0,1] #ddd
             mask_pol = None 
 
-
-        if args.mask_policy == "scalable_res":
-            list_pr = [0,1,2,3]
-            mask_pol = None
-        
-        if args.mask_policy == "all-one": #dddd#
-            mask_pol = "two-levels"
-            list_pr = [0,1]
-        
-
-        
-
         if "progressive_mask" == args.model and args.mask_policy == "point-based-std":
             list_pr = net.quality_list
             mask_pol = net.mask_policy
@@ -289,7 +279,15 @@ def main(argv):
         
         if "progressive_enc" in args.model: #ddd
             list_pr = [0,1.5,2.5,5,6.5,7.5,10]
-            mask_pol = "point-based-std"                 
+            mask_pol = "point-based-std"    
+
+        if  args.mask_policy =="three-levels-std":
+            mask_pol = "point-based-std" 
+            list_pr = [0,1.5,2.5,5,6.5,7.5,10]  
+
+        if  args.mask_policy =="three-levels-learnable":
+            mask_pol = "three-levels-learnable"
+            list_pr = [0,1,2]  
 
 
         bpp_t, psnr_t = test_epoch(epoch, 
@@ -315,8 +313,8 @@ def main(argv):
             net.update()
             #net.lmbda_list
             bpp, psnr,_ = compress_with_ac(net,  
-                                         filelist, 
-                                         device,
+                                            filelist, 
+                                            device,
                                            epoch = epoch_enc, 
                                            pr_list =list_pr,  
                                             mask_pol = mask_pol,
@@ -353,21 +351,15 @@ def main(argv):
 
 
 
-        if args.checkpoint != "none":
-            check = "pret"
-        else:
-            check = "zero"
-
         stringa_lambda = ""
         for lamb in args.lmbda_list:
             stringa_lambda = stringa_lambda  + "_" + str(lamb)
 
 
-        name_folder = check + "_" + "_multi_" + stringa_lambda + "_"\
-              + args.model + "_" + str(args.N) + "_" + str(args.division_dimension) + "_" + \
-             str(args.support_progressive_slices) + "_" + args.mask_policy +  "_" +    str(args.lrp_prog) + str(args.joiner_policy) + \
-            "_" + str(args.multiple_encoder) + "_" + str(args.multiple_decoder) + "_" + str(args.multiple_hyperprior)
-        cartella = os.path.join(args.save_path,name_folder)
+        name_folder = args.code + "_" + stringa_lambda + "_"
+        
+        
+        cartella = os.path.join(args.save_path,name_folder) #dddd
 
 
         if not os.path.exists(cartella):
@@ -388,7 +380,7 @@ def main(argv):
                     "state_dict": net.state_dict(),
                     "optimizer": optimizer.state_dict(),
                     "lr_scheduler": lr_scheduler.state_dict(),
-                    "aux_optimizer":aux_optimizer if aux_optimizer is not None else "None",
+                    "aux_optimizer":aux_optimizer.state_dict() if aux_optimizer is not None else "None",
                     "args":args
       
                 },

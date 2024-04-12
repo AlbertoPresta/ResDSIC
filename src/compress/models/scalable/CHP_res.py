@@ -4,7 +4,7 @@ import torch.nn as nn
 from compress.layers import GDN
 from ..utils import conv, deconv
 from compress.ops import ste_round
-from compressai.entropy_models import EntropyBottleneck
+
 from compress.layers.mask_layers import ChannelMask
 from .progressive_res import ProgressiveResWACNN
 
@@ -36,10 +36,11 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
                 multiple_encoder = True,
                 multiple_hyperprior = False,
                 mask_policy = "two-levels",
-                lmbda_list = [0.005,0.075],
+                lmbda_list = [0.005,0.05],
                 shared_entropy_estimation = False,
                 joiner_policy = "res",
                 support_progressive_slices = 0,
+                double_dim = False,
                 **kwargs):
         
         super().__init__(N = N, 
@@ -62,6 +63,23 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
         assert self.shared_entropy_estimation is False 
         self.multiple_hyperprior = multiple_hyperprior
 
+
+        self.double_dim = double_dim
+        self.scalable_levels = len(self.lmbda_list)
+        self.masking = ChannelMask(self.mask_policy, 
+                                   self.scalable_levels,
+                                   self.dim_chunk,
+                                   num_levels =self.num_slices_list[1],
+                                    double_dim=self.double_dim )
+        
+
+        self.quality_list = [i for i in range(self.scalable_levels)]
+
+        self.ns0 = self.num_slice_cumulative_list[0] 
+        self.ns1 = self.num_slice_cumulative_list[1] 
+
+        estremo_indice = self.support_progressive_slices + 1
+        delta_dim = self.division_dimension[1] - self.division_dimension[0]
 
         if self.multiple_encoder:
             self.g_a = nn.ModuleList(
@@ -132,9 +150,6 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
 
         if self.multiple_hyperprior:
 
-            #self.entropy_bottleneck_prog = EntropyBottleneck(self.N)
-
-
             self.h_mean_s = nn.ModuleList(
                 nn.Sequential(
                 conv3x3(self.N, 192),
@@ -161,8 +176,7 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
                     conv3x3(288, self.dimensions_M[0]),
                 ) for i in range(2))
         
-        estremo_indice = self.support_progressive_slices + 1
-        delta_dim = self.division_dimension[1] - self.division_dimension[0]
+
         self.cc_mean_transforms_prog = nn.ModuleList(
                     nn.Sequential(
                         conv(delta_dim + 32*min(i + 1, estremo_indice), 224, stride=1, kernel_size=3),
@@ -235,12 +249,6 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
                 )
 
 
-        self.scalable_levels = len(self.lmbda_list)
-        self.masking = ChannelMask(self.mask_policy, self.scalable_levels,self.dim_chunk,num_levels =self.num_slices_list[1] )
-        self.quality_list = [i for i in range(self.scalable_levels)]
-
-        self.ns0 = self.num_slice_cumulative_list[0] 
-        self.ns1 = self.num_slice_cumulative_list[1] 
 
     def freeze_base_net(self,multiple_hyperprior,freeze_dec):
 
@@ -266,11 +274,6 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
             for p in self.g_s[1].parameters():
                 p.requires_grad = False       
         
-
-
-
-
-
             
     def print_information(self):
         if self.multiple_encoder is False:
@@ -285,7 +288,7 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
         print("cc_scale_transforms",sum(p.numel() for p in self.cc_scale_transforms.parameters()))
 
 
-        if self.mask_policy == "single-learnable-mask-quantile":
+        if self.mask_policy == "single-learnable-mask-quantile" or self.mask_policy == "three-levels-learnable":
             print("mask",sum(p.numel() for p in self.masking.mask_conv.parameters()))
         if "gamma" in self.mask_policy:
             print("mask",sum(p.numel() for p in self.masking.mask_conv.parameters()))
@@ -312,8 +315,6 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
         print(" freeze parameterss: ", model_fr_parameters)
         return sum(p.numel() for p in self.parameters() if p.requires_grad)
     
-    
-
 
 
     def define_quality(self,quality):
@@ -362,9 +363,7 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
 
         if "gamma" in self.mask_policy:
             for i in range(len(self.masking.gamma)): #ddd
-                self.masking.gamma[i].requires_grad_(True)
-
-                        
+                self.masking.gamma[i].requires_grad_(True)                        
 
     def compute_hyperprior(self,y, quality = 0):
 
@@ -489,7 +488,8 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
                                         slice_index = current_index,
                                         pr = q, 
                                         mask_pol = mask_pol) 
-                block_mask = self.masking.apply_noise(block_mask, training if "learnable" in mask_pol else False)
+                block_mask = self.masking.apply_noise(block_mask, 
+                                                      training if "learnable" in mask_pol else False)
 
 
                 y_slice_m = y_slice  - mu
@@ -543,9 +543,6 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
     
 
 
-
-
-
     def compress(self, x, quality = 0.0, mask_pol = None):
 
 
@@ -559,10 +556,8 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
             y = torch.cat([y_base,y_enh],dim = 1).to(x.device)
         y_shape = y.shape[2:]
 
-        
-
+    
         z = self.h_a(y)
-
 
         z_strings =  self.entropy_bottleneck.compress(z)
         

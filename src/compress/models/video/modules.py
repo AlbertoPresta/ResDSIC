@@ -184,10 +184,10 @@ class HyperpriorMasked(Hyperprior):
         indexes = self.gaussian_conditional.build_indexes(scales_b)
         y_string = self.gaussian_conditional.compress(y_b, indexes, means_b)
         y_hat_b = self.gaussian_conditional.quantize(y_b, "dequantize", means_b)
-        y_hat_p = self.gaussian_conditional.quantize(y_p, "dequantize", means_p)
+        #y_hat_p = self.gaussian_conditional.quantize(y_p, "dequantize", means_p)
 
         if quality == 0: 
-            return [y_hat_b, y_hat_p], {"strings": [y_string, z_string], "shape": z.size()[-2:]}
+            return y_hat_b, {"strings": [y_string, z_string], "shape": z.size()[-2:]}
         
         mask = self.masking(scales if self.double_dim else scales_p, 
                                                     mask_pol = mask_pol, 
@@ -199,16 +199,34 @@ class HyperpriorMasked(Hyperprior):
         y_hat_p = y_hat_p + means_p
         y_hat = y_hat_p + y_hat_b
 
-        return [y_hat_b,y_hat], {"strings": [y_string,y_string_prog, z_string], "shape": z.size()[-2:]}
+        return y_hat, {"strings": [y_string,y_string_prog, z_string], "shape": z.size()[-2:]}
 
-    def decompress(self, strings, shape):
+    def decompress(self, strings, shape,quality,mask_pol):
         assert isinstance(strings, list) and len(strings) == 2
-        z_hat = self.entropy_bottleneck.decompress(strings[1], shape)
+        z_hat = self.entropy_bottleneck.decompress(strings[-1], shape)
 
         scales = self.hyper_decoder_scale(z_hat)
         means = self.hyper_decoder_mean(z_hat)
-        indexes = self.gaussian_conditional.build_indexes(scales)
-        y_hat = self.gaussian_conditional.decompress(strings[0], indexes, z_hat.dtype, means)
+
+        scales_b, scales_p = scales.chuck(2,1)
+        means_b, means_p = means.chuck(2,1)
+
+        if quality == 0:
+            indexes = self.gaussian_conditional.build_indexes(scales_b)
+            y_hat = self.gaussian_conditional.decompress(strings[0], 
+                                                         indexes, 
+                                                         z_hat.dtype, 
+                                                         means_b)
+        else:
+
+            mask = self.masking(scales if self.double_dim else scales_p, 
+                                                        mask_pol = mask_pol, 
+                                                        quality = quality) 
+            indexes = self.gaussian_conditional.build_indexes(scales_p*mask)
+            y_hat = self.gaussian_conditional.decompress(strings[1], 
+                                                         indexes, 
+                                                         z_hat.dtype, 
+                                                         means_p)
 
         return y_hat   
     

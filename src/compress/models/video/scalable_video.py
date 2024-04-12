@@ -299,10 +299,7 @@ class ScalableScaleSpaceFlow(ScaleSpaceFlow):
         x_rec_p = x_pred_p + x_res_hat_p # final reconstruction
 
 
-        hype_likelihoods = {
-            "motion": z_likelihoods_motion,
-            "res": z_likelihoods_res,
-        }
+
 
         base_likelihoods = {"motion":
                                     {"y": y_likelihoods_motion_b,
@@ -330,7 +327,7 @@ class ScalableScaleSpaceFlow(ScaleSpaceFlow):
         x_rec  = [x_rec_b,x_rec_p]
         return x_rec, {"base": base_likelihoods, 
                         "prog": prog_likelihoods}
-                        #"hype":hype_likelihoods}
+                       
 
     ########################################################################
     ########################################################################
@@ -493,7 +490,6 @@ class ScalableScaleSpaceFlow(ScaleSpaceFlow):
         x_rec = x_pred + x_res_hat
 
         return x_rec
-
 
 
 

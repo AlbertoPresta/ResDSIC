@@ -5,6 +5,7 @@ import torch
 import torch.nn as nn
 from compressai.ops import LowerBound
 from compress.layers import conv3x3, subpel_conv3x3
+from compress.ops import ste_round
 
 class Mask(nn.Module):
 
@@ -233,11 +234,23 @@ class ChannelMask(nn.Module):
                             conv3x3(self.input_dim,self.dim_chunk),
                             nn.Sigmoid()                           
                             ) 
+        elif self.mask_policy == "three-levels-learnable":
+            self.mask_conv = nn.Sequential(
+                            conv3x3(self.input_dim,self.dim_chunk),
+                            nn.ReLU(),
+                            conv3x3(self.input_dim,self.dim_chunk,  stride=2),
+                            nn.ReLU(),
+                            subpel_conv3x3(self.input_dim,self.dim_chunk, 2),
+                            nn.ReLU(),
+                            conv3x3(self.input_dim,self.dim_chunk),
+                            nn.Sigmoid()                           
+                            )           
 
     def apply_noise(self, mask, tr):
             if tr:
-                mask = mask + (torch.rand_like(mask) - 0.5)
-                mask = mask + mask.round().detach() - mask.detach()  # Differentiable torch.round()   
+                mask = ste_round(mask)
+                #mask = mask + (torch.rand_like(mask) - 0.5)
+                #mask = mask + mask.round().detach() - mask.detach()  # Differentiable torch.round()   
                 
             else:
                 mask = torch.round(mask)
@@ -276,6 +289,32 @@ class ChannelMask(nn.Module):
 
         elif mask_pol == "two-levels":
             return torch.zeros_like(scale).to(scale.device) if pr == 0 else torch.ones_like(scale).to(scale.device)
+        elif mask_pol == "three-levels-std":
+            if pr == 0: 
+                return torch.zeros_like(scale).to(scale.device)
+            elif pr == 2:
+                return torch.ones_like(scale).to(scale.device)
+            else:
+                shapes = scale.shape
+                bs, ch, w,h = shapes
+                assert scale is not None 
+                pr = 0.5  
+                scale = scale.ravel()
+                quantile = torch.quantile(scale, pr)
+                res = scale >= quantile 
+                return res.reshape(bs,ch,w,h).to(torch.float).to(scale.device)
+        elif mask_pol == "three-levels-learnable":
+            if pr == 0: 
+                return torch.zeros_like(scale).to(scale.device)
+            elif pr == 2:
+                return torch.ones_like(scale).to(scale.device)
+            else:
+                scale_input = torch.cat([scale,scale_prog],dim = 1) if self.double_dim else scale
+                importance_map =  self.mask_conv(scale_input)
+                return ste_round(importance_map)
+
+               
+                
         elif mask_pol == "single-learnable-mask-quantile":
             if pr == 10:
                 return torch.ones_like(scale).to(scale.device)
