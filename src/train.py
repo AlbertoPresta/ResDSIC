@@ -190,7 +190,7 @@ def main(argv):
         net.load_state_dict(checkpoint["state_dict"], strict=True)
     elif args.checkpoint_base != "none":
 
-        checkpoin_base_model = dict_base_model(args.checkpoint_base)
+        checkpoin_base_model = dict_base_model[args.checkpoint_base]
         base_checkpoint = torch.load(checkpoin_base_model,map_location=device)
         new_check = initialize_model_from_pretrained(base_checkpoint, args.multiple_hyperprior)
         net.load_state_dict(new_check,strict = False)

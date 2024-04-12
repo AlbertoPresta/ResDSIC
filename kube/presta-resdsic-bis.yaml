@@ -1,21 +1,21 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: ece-scalable
+  name: scalable-dsic-bis
   namespace: ece-wcsng-xd
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: ece-scalable
+      app: scalable-dsic-bis
   template:
     metadata:
       labels:
-        app: ece-scalable
+        app: scalable-dsic-bis
     spec:
-      hostname: ece-scalable
+      hostname: scalable-dsic-bis
       containers:
-      - name: ece-scalable
+      - name: scalable-dsic-bis
         image: docker.io/albipresta23/pccompress  #docker.io/zppppppx/pvt-ssd:v6  #gitlab-registry.nrp-nautilus.io/wcsng/wcsng_3dcv_desktop:latest
         env:
         - name: TZ
@@ -114,7 +114,7 @@ spec:
                 values:
                 - NVIDIA-A10
                 - NVIDIA-GeForce-RTX-3090
-                 - NVIDIA-A6000
+                - NVIDIA-A6000
 
       tolerations:
         - effect: NoSchedule
