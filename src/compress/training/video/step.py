@@ -258,8 +258,8 @@ def valid_epoch(epoch, test_dataloader, model, criterion,scalable = False):
                 "valid/bpp_motion_prog":bpp_l_motion_prog.avg,
                 "valid/mse_base":mse_l_base.avg,
                 "valid/mse_prog":mse_l_prog.avg,
-                "valid/psnr_base":psnr_base.avg,
-                "valid/psnr_prog":psnr_prog.avg
+                "valid/psnr_base":psnr_base,
+                "valid/psnr_prog":psnr_prog
 
 
                 }

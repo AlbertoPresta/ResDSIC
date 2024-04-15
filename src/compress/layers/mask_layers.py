@@ -329,8 +329,8 @@ class ChannelMask(nn.Module):
             elif pr == 2:
                 return torch.ones_like(scale).to(scale.device)
             else:
-                assert scale_base is not None
-                importance_map =  self.mask_conv(scale_base)
+                #assert scale_base is not None
+                importance_map =  self.mask_conv(scale)
                 return ste_round(importance_map)
 
                

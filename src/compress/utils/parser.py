@@ -97,7 +97,7 @@ def parse_args(argv):
     parser.add_argument("-n","--num-workers",type=int,default=8,help="Dataloaders threads (default: %(default)s)",)
     #dddd
 
-    parser.add_argument("--lambda_list",dest="lmbda_list", nargs='+', type=float, default = [ 0.004, 0.015, 0.06])
+    parser.add_argument("--lambda_list",dest="lmbda_list", nargs='+', type=float, default = [ 0.0025, 0.025, 0.1])
     parser.add_argument("--division_dimension", nargs='+', type=int, default = [320, 640])
     parser.add_argument("--inner_dimensions", nargs='+', type=int, default = [192, 192])
     parser.add_argument("--list_quality", nargs='+', type=int, default = [0])
@@ -113,9 +113,9 @@ def parse_args(argv):
 
     parser.add_argument("--N", type=int, default=192, help="Batch size (default: %(default)s)")#ddddd#ddd
     parser.add_argument("--M", type=int, default=640, help="Batch size (default: %(default)s)")
-    parser.add_argument("--patience", type=int, default=4, help="Batch size (default: %(default)s)")#ddddddd
+    parser.add_argument("--patience", type=int, default=5, help="Batch size (default: %(default)s)")#ddddddd
 
-    parser.add_argument("--type_loss", type=int, default=0, help="v")#ddddddd
+    parser.add_argument("--type_loss", type=int, default=0, help="v")#dddddddttt
     parser.add_argument("--code", type=str, default = "0001", help="Batch size (default: %(default)s)")
     parser.add_argument("--num_images_val", type=int, default=816, help="Batch size (default: %(default)s)")
     parser.add_argument("--mask_policy", type=str, default = "three-levels-learnable", help="Batch size (default: %(default)s)")

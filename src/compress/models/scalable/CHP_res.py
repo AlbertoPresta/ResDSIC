@@ -492,7 +492,7 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
 
                 if self.double_dim is False or mask_pol in ("two-levels","point-base-std", "three-levels-std"):
                     block_mask = self.masking(scale,
-                                            scale_base = None,
+                                            scale_base = torch.cat([scale,scales_baseline[current_index]]),
                                             slice_index = current_index,
                                             pr = q, 
                                             mask_pol = mask_pol) 
@@ -667,7 +667,7 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
                                             mask_pol = mask_pol)   
             masks.append(block_mask)
             block_mask = self.masking.apply_noise(block_mask, False)
-            index = self.gaussian_conditional.build_indexes(scale*block_mask).int()
+            index = self.gaussian_conditional.build_indexes(scale*block_mask).int() #ffff
 
             y_q_string  = self.gaussian_conditional.compress((y_slice - mu)*block_mask, index)
             y_strings.append(y_q_string)
