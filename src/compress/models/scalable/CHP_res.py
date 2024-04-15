@@ -835,6 +835,9 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
 
         scales_base = []
 
+        mu_base, mu_prog = [],[]
+        std_base, std_prog = [],[]
+
         for slice_index in range(self.num_slice_cumulative_list[0]):
             y_slice = y_slices[slice_index]
             idx = slice_index%self.num_slice_cumulative_list[0]
@@ -849,6 +852,12 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
             mu = mu[:, :, :y_shape[0], :y_shape[1]]  
             scale = self.cc_scale_transforms[idx](scale_support)#self.extract_scale(idx,slice_index,scale_support)
             scale = scale[:, :, :y_shape[0], :y_shape[1]]
+
+            mu_base.append(mu)
+            std_base.append(scale) 
+            if quality == 0:
+                mu_prog.append(mu + 1e-8)
+                std_prog.append(scale + 1e-8)
 
             scales_base.append(scale)
 
@@ -871,7 +880,8 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
             return {
                 "x_hat": x_hat,
                 "likelihoods": {"y": y_likelihoods,"z": z_likelihoods},
-                "y_hat":y_hat
+            "y_hat":y_hat,"y_base":y_hat,"y_prog":y_likelihood_quality,
+            "mu_base":mu_base,"mu_prog":mu_prog,"std_base":std_base,"std_prog":std_prog
 
             }             
 
@@ -896,6 +906,9 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
 
             scale = self.cc_scale_transforms_prog[current_index](scale_support)#self.extract_scale(idx,slice_index,scale_support)
             scale = scale[:, :, :y_shape[0], :y_shape[1]]
+
+            mu_prog.append(mu)
+            std_prog.append(scale)
 
             sc_base = torch.cat([scale,y_hat_slices[current_index]],dim = 1) #fff
             block_mask = self.masking(scale,
@@ -927,19 +940,20 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
 
 
         y_likelihoods = torch.cat(y_likelihood_quality,dim = 1) #ddddd
-        y_hat = torch.cat(y_hat_slices_quality,dim = 1)  
+        y_hat_p = torch.cat(y_hat_slices_quality,dim = 1)  
     
         if self.multiple_decoder:
-            x_hat = self.g_s[1](y_hat).clamp_(0, 1)
+            x_hat = self.g_s[1](y_hat_p).clamp_(0, 1)
         else:
             #y_hat_t = self.g_s_prog(y_hat)
-            x_hat = self.g_s(y_hat).clamp_(0, 1) 
+            x_hat = self.g_s(y_hat_p).clamp_(0, 1) 
 
 
         return {
             "x_hat": x_hat,
             "likelihoods": {"y": y_likelihoods,"z": z_likelihoods},
-            "y_hat":y_hat
+            "y_hat":y_hat,"y_base":y_hat,"y_prog":y_hat_p,
+            "mu_base":mu_base,"mu_prog":mu_prog,"std_base":std_base,"std_prog":std_prog
 
         }     
 
