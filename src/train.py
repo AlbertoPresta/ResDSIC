@@ -12,7 +12,7 @@ import torch.optim as optim
 from   compress.training.image.step import train_one_epoch, valid_epoch, test_epoch, compress_with_ac
 from torch.utils.data import DataLoader
 from torchvision import transforms
-from compress.training.image.loss import ScalableRateDistortionLoss
+from compress.training.image.loss import ScalableRateDistortionLoss, ScalableMutualRateDistortionLoss
 from compress.datasets.utils import ImageFolder, TestKodakDataset
 from compress.models import get_model, initialize_model_from_pretrained
 #from compress.zoo import models
@@ -161,7 +161,11 @@ def main(argv):
         lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, "min", factor=0.3, patience=args.patience)
     
 
-    criterion = ScalableRateDistortionLoss(lmbda_list=args.lmbda_list)
+    if args.mutual:
+        criterion = ScalableMutualRateDistortionLoss(lmbda_list=args.lmbda_list)
+    else:
+        criterion = ScalableRateDistortionLoss(lmbda_list=args.lmbda_list)
+    
 
     if args.checkpoint != "none" and args.continue_training:
         print("entro qua e continuo il training")

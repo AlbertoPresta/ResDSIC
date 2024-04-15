@@ -48,6 +48,9 @@ def train_one_epoch(model,
     kd_enh = AverageMeter()
     kd_base = AverageMeter()
 
+    mutual_info = AverageMeter()
+
+
 
 
     lmbda_list = model.lmbda_list
@@ -91,6 +94,8 @@ def train_one_epoch(model,
             kd_enh.update(out_criterion["kd_enh"].clone().detach())
         if "kd_base" in list(out_criterion.keys()):
             kd_enh.update(out_criterion["kd_base"].clone().detach())
+        if "mutual" in list(out_criterion.keys()):
+            mutual_info.update(out_criterion["mutual"].clone().detach())
 
 
         wand_dict = {
@@ -119,6 +124,12 @@ def train_one_epoch(model,
             wand_dict = {
                 "train_batch": counter, 
                 "train_batch/kd_base": out_criterion["kd_base"].clone().detach().item(),
+            }
+            wandb.log(wand_dict)
+        if "mutual" in list(out_criterion.keys()):
+            wand_dict = {
+                "train_batch": counter, 
+                "train_batch/mutual": out_criterion["mutual"].clone().detach().item(),
             }
             wandb.log(wand_dict)
         counter += 1
@@ -154,25 +165,18 @@ def train_one_epoch(model,
             }
         wandb.log(log_dict) 
 
+    if "mutual" in list(out_criterion.keys()):
+        log_dict = {
+            "train":epoch,
+            "train/mutual":mutual_info.avg,
+            }
+        wandb.log(log_dict) 
+
+
     return counter
 
 
-def criterion_test(output,target):
-    mse = nn.MSELoss()
-    N, _, H, W = target.size()
-    out = {}
-    num_pixels = N * H * W
 
-
-
-    out["bpp_hype"] = sum((torch.log(likelihoods).sum() / (-math.log(2) * num_pixels)) for likelihoods in output["likelihoods_hyperprior"].values())
-    out["bpp_y"] = sum((torch.log(likelihoods).sum() / (-math.log(2) * num_pixels))for likelihoods in output["likelihoods"].values())
-        
-    out["bpp_loss"] = out["bpp_y"] + out["bpp_hype"]
-    out["mse_loss"] = mse(output["x_hat"], target)
-
-
-    return out
     
 
 
@@ -186,6 +190,7 @@ def valid_epoch(epoch, test_dataloader,criterion, model, pr_list = [0.05], mask_
     mse_lss = AverageMeter() 
     
     psnr = AverageMeter() 
+    mutual_info = AverageMeter()
 
     with torch.no_grad():
         for d in test_dataloader:
@@ -223,7 +228,10 @@ def valid_epoch(epoch, test_dataloader,criterion, model, pr_list = [0.05], mask_
                         #out_net = model(d)
                         out_criterion = criterion(out_net, d, lmbda = p) #dddddd
 
-                    loss.update(out_criterion["loss"].clone().detach())               
+                    loss.update(out_criterion["loss"].clone().detach())
+
+                    if "mutual" in list(out_criterion.keys()):
+                        mutual_info.update(out_criterion["mutual"].clone().detach())               
 
                     
     log_dict = {
@@ -234,6 +242,13 @@ def valid_epoch(epoch, test_dataloader,criterion, model, pr_list = [0.05], mask_
             "valid/psnr":psnr.avg,
 
          #   "test/y_loss_"+ name[i]: y_loss[i].avg,
+            }
+    wandb.log(log_dict)
+    if "mutual" in list(out_criterion.keys()):
+        log_dict = {
+            "valid":epoch,
+            "valid/mutual":mutual_info.avg,
+
             }
 
     wandb.log(log_dict)
@@ -247,9 +262,7 @@ def test_epoch(epoch, test_dataloader,criterion, model, pr_list, mask_pol = None
 
     bpp_loss =[AverageMeter()  for _ in range(len(pr_list))] 
     psnr = [AverageMeter()  for _ in range(len(pr_list))]
-
-
-    #pr_list =  [0] +  pr_list  + [-1]
+    mutual_info = [AverageMeter()  for _ in range(len(pr_list))]
 
     with torch.no_grad():
         for d in test_dataloader:
@@ -275,9 +288,11 @@ def test_epoch(epoch, test_dataloader,criterion, model, pr_list, mask_pol = None
 
 
                     psnr[j].update(psnr_im)
-                    bpp_loss[j].update(bpp)                  
+                    bpp_loss[j].update(bpp)
 
 
+                    if "mutual" in list(out_net.keys()):
+                        mutual_info[j].update(out_net["mutual"])
 
     for i in range(len(pr_list)):
         if i== 0:
@@ -295,6 +310,14 @@ def test_epoch(epoch, test_dataloader,criterion, model, pr_list, mask_pol = None
             }
 
         wandb.log(log_dict)
+
+        if "mutual" in list(out_net["mutual"]):
+            log_dict = {
+                name:epoch,
+                name + "/mutual":mutual_info[i].avg
+                }
+            wandb.log(log_dict)
+
     return [bpp_loss[i].avg for i in range(len(bpp_loss))], [psnr[i].avg for i in range(len(psnr))]
 
 import time

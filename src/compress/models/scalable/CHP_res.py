@@ -417,6 +417,9 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
 
         scales_baseline = []
 
+        mu_base, mu_prog = [],[]
+        std_base, std_prog = [],[]
+
 
         for slice_index in range(self.ns0):
             y_slice = y_slices[slice_index]
@@ -432,9 +435,11 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
             
             mu = self.cc_mean_transforms[idx](mean_support)  #self.extract_mu(idx,slice_index,mean_support)
             mu = mu[:, :, :y_shape[0], :y_shape[1]]  
+            mu_base.append(mu)
 
             scale = self.cc_scale_transforms[idx](scale_support)#self.extract_scale(idx,slice_index,scale_support)
             scale = scale[:, :, :y_shape[0], :y_shape[1]]
+            std_base.append(scale)
 
             scales_baseline.append(scale)
             _, y_slice_likelihood = self.gaussian_conditional(y_slice,
@@ -486,9 +491,11 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
             
                 mu = self.cc_mean_transforms_prog[current_index](mean_support)  #self.extract_mu(idx,slice_index,mean_support)
                 mu = mu[:, :, :y_shape[0], :y_shape[1]]  
+                mu_prog.append(mu)
 
                 scale = self.cc_scale_transforms_prog[current_index](scale_support)#self.extract_scale(idx,slice_index,scale_support)
                 scale = scale[:, :, :y_shape[0], :y_shape[1]]
+                std_prog.append(scale)
 
 
                 if self.double_dim is False: # or mask_pol in ("two-levels","point-base-std", "three-levels-std"):
@@ -559,7 +566,8 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
         return {
             "x_hat": x_hats,
             "likelihoods": {"y": y_likelihoods_b,"y_prog":y_likelihood_total,"z": z_likelihoods},
-            "y_hat":y_hat_total
+            "y_hat":y_hat_total,"y_base":y_hat_b,"y_prog":y_likelihood_quality,
+            "mu_base":mu_base,"mu_prog":mu_prog,"std_base":std_base,"std_prog":std_prog
         }
     
 
