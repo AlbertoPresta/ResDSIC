@@ -490,15 +490,20 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
                 scale = self.cc_scale_transforms_prog[current_index](scale_support)#self.extract_scale(idx,slice_index,scale_support)
                 scale = scale[:, :, :y_shape[0], :y_shape[1]]
 
-                if self.double_dim is False or mask_pol in ("two-levels","point-base-std", "three-levels-std"):
+
+                if self.double_dim is False: # or mask_pol in ("two-levels","point-base-std", "three-levels-std"):
+
                     block_mask = self.masking(scale,
-                                            scale_base = torch.cat([scale,scales_baseline[current_index]]),
+                                            scale_base = None,
                                             slice_index = current_index,
                                             pr = q, 
                                             mask_pol = mask_pol) 
                 else:
+                    
+                    sc_base = torch.cat([scale,y_hat_slices_base[current_index]],dim = 1)
+
                     block_mask = self.masking(scale = scale,
-                                            scale_base = torch.cat([scale,scales_baseline[current_index]],dim = 1),
+                                            scale_base = sc_base,
                                             slice_index = current_index,
                                             pr = q, 
                                             mask_pol = mask_pol)                    
@@ -653,15 +658,16 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
             scale = self.cc_scale_transforms_prog[current_index](scale_support)#self.extract_scale(idx,slice_index,scale_support)
             scale = scale[:, :, :y_shape[0], :y_shape[1]]
 
-            if self.double_dim is False or mask_pol in ("two-levels","point-base-std", "three-levels-std"):
+            if self.double_dim is False: # or mask_pol in ("two-levels","point-base-std", "three-levels-std"):
                 block_mask = self.masking(scale,
                                             scale_base = None,
                                             slice_index = current_index,
                                             pr = quality, 
                                             mask_pol = mask_pol) 
             else:
+                sc_base = torch.cat([scale,y_hat_slices[current_index]],dim = 1)
                 block_mask = self.masking(scale = scale,
-                                            scale_base = torch.cat([scale,scales_baseline[current_index]],dim = 1),
+                                            scale_base = sc_base,
                                             slice_index = current_index,
                                             pr = quality, 
                                             mask_pol = mask_pol)   
@@ -763,15 +769,16 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
             mu = mu[:, :, :y_shape[0], :y_shape[1]]  
             scale = scale[:, :, :y_shape[0], :y_shape[1]]
 
-            if self.double_dim is False or mask_pol in ("two-levels","point-base-std", "three-levels-std"):
+            if self.double_dim is False: # or mask_pol in ("two-levels","point-base-std", "three-levels-std"):
                 block_mask = self.masking(scale,
                                             scale_base = None,
                                             slice_index = current_index,
                                             pr = quality, 
                                             mask_pol = mask_pol) 
             else:
+                sc_base = torch.cat([scale,y_hat_slices[current_index]],dim = 1)
                 block_mask = self.masking(scale = scale,
-                                            scale_base = torch.cat([scale,scales_baseline[current_index]],dim = 1),
+                                            scale_base = sc_base,
                                             slice_index = current_index,
                                             pr = quality, 
                                             mask_pol = mask_pol)   
@@ -882,9 +889,9 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
             scale = self.cc_scale_transforms_prog[current_index](scale_support)#self.extract_scale(idx,slice_index,scale_support)
             scale = scale[:, :, :y_shape[0], :y_shape[1]]
 
-            
+            sc_base = torch.cat([scale,y_hat_slices[current_index]],dim = 1) #fff
             block_mask = self.masking(scale,
-                                      scale_base = scales_base[current_index],
+                                      scale_base = sc_base ,
                                       slice_index = current_index, 
                                       pr = quality,
                                         mask_pol = mask_pol) #scale, slice_index = 0,  pr = 0, mask_pol = None

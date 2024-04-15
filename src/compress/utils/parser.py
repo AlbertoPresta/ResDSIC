@@ -124,7 +124,7 @@ def parse_args(argv):
     parser.add_argument("--aux-learning-rate", default=1e-3, type=float, help="Auxiliary loss learning rate (default: %(default)s)",)
     parser.add_argument("--patch-size",type=int,nargs=2,default=(256, 256),help="Size of the patches to be cropped (default: %(default)s)",)
     parser.add_argument("--cuda", action="store_true", help="Use cuda")
-    parser.add_argument("--freeze", action="store_true", help="Use cuda") #ddd
+    parser.add_argument("--freeze", action="store_true", help="Use cuda") #dddfff
     parser.add_argument("--save", action="store_true", default=True, help="Save model to disk")
     parser.add_argument("--multiple_decoder", action="store_true", help="Use cuda")
     parser.add_argument("--multiple_encoder", action="store_true", help="Use cuda")

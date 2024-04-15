@@ -33,9 +33,8 @@ class Mask(nn.Module):
 
     def apply_noise(self, mask, tr):
             if tr:
-                mask = mask + (torch.rand_like(mask) - 0.5)
+                #mask = mask + (torch.rand_like(mask) - 0.5)
                 mask = mask + mask.round().detach() - mask.detach()  # Differentiable torch.round()   
-                print("mask dopo noise!!!: ",mask.requires_grad)
             else:
                 mask = torch.round(mask)
             return mask
@@ -153,8 +152,9 @@ class ChannelMask(nn.Module):
         self.dim_chunk =dim_chunk 
         self.num_levels = num_levels
         self.double_dim = double_dim
-        if double_dim:
-            print("vado qua ")
+        
+        if self.double_dim:
+            print("vado qua dove il double dim è raddoppiato!!!")
             self.input_dim = self.dim_chunk*2
         else: 
             self.input_dim = self.dim_chunk
@@ -173,7 +173,7 @@ class ChannelMask(nn.Module):
                             ) for _ in range(self.num_levels)
             )
 
-        if self.mask_policy == "single-learnable-mask-quantile":
+        elif self.mask_policy == "single-learnable-mask-quantile":
             self.mask_conv = nn.Sequential(
                             conv3x3(self.input_dim,self.dim_chunk),
                             nn.ReLU(),
@@ -185,7 +185,7 @@ class ChannelMask(nn.Module):
                             nn.Sigmoid()                           
                             ) 
             
-        if self.mask_policy == "single-learnable-mask-gamma":
+        elif self.mask_policy == "single-learnable-mask-gamma":
             self.gamma = [
                         torch.nn.Parameter(torch.ones((self.scalable_levels - 2, self.dim_chunk))) 
                         for _ in range(self.num_levels)
@@ -204,7 +204,7 @@ class ChannelMask(nn.Module):
             self.gamma_lower_bound = LowerBound(gamma_bound)
 
 
-        if self.mask_policy == "learnable-mask-gamma":
+        elif self.mask_policy == "learnable-mask-gamma":
             self.gamma = [
                         torch.nn.Parameter(torch.ones((self.scalable_levels - 2, self.dim_chunk))) 
                         for _ in range(self.num_levels)
@@ -216,7 +216,7 @@ class ChannelMask(nn.Module):
             self.gamma_lower_bound = LowerBound(gamma_bound)
         
         
-        if self.mask_policy == "learnable-mask-nested":
+        elif self.mask_policy == "learnable-mask-nested":
             self.mask_conv = nn.ModuleList(
                                 nn.ModuleList(
                                     nn.Sequential(torch.nn.Conv2d(in_channels=self.input_dim, 
@@ -224,7 +224,7 @@ class ChannelMask(nn.Module):
                                     kernel_size=1, 
                                     stride=1),) for _ in range(self.scalable_levels -2)
                                     ) for _ in range(self.num_levels) )
-        if self.mask_policy == "single-learnable-mask-nested":
+        elif self.mask_policy == "single-learnable-mask-nested":
             self.mask_conv = nn.Sequential(
                             conv3x3(self.input_dim,self.dim_chunk),
                             nn.ReLU(),
@@ -236,17 +236,20 @@ class ChannelMask(nn.Module):
                             nn.Sigmoid()                           
                             ) 
         
-        if self.mask_policy == "three-levels-learnable":
+        elif self.mask_policy == "three-levels-learnable":
+            print("STO ENTRANDO QUA,DEVO COSTRUIRLA BENE!!!")
             self.mask_conv = nn.Sequential(
-                            conv3x3(self.input_dim,self.dim_chunk),
+                            conv3x3(self.input_dim,self.input_dim),
                             nn.ReLU(),
-                            conv3x3(self.input_dim,self.dim_chunk,  stride=2),
+                            conv3x3(self.input_dim,self.input_dim,  stride=2),
                             nn.ReLU(),
                             subpel_conv3x3(self.input_dim,self.dim_chunk, 2),
                             nn.ReLU(),
-                            conv3x3(self.input_dim,self.dim_chunk),
+                            conv3x3(self.dim_chunk,self.dim_chunk),
                             nn.Sigmoid()                           
-                            )           
+                            ) 
+
+            print(self.mask_conv)          
 
     def apply_noise(self, mask, tr):
             if tr:
@@ -289,7 +292,7 @@ class ChannelMask(nn.Module):
             res = scale >= quantile 
             return res.reshape(bs,ch,w,h).to(torch.float).to(scale.device)
 
-        if mask_pol == "point-based-double-std":
+        elif mask_pol == "point-based-double-std":
             if pr == 10:
                 return torch.ones_like(scale).to(scale.device)
             elif pr == 0:
@@ -330,7 +333,10 @@ class ChannelMask(nn.Module):
                 return torch.ones_like(scale).to(scale.device)
             else:
                 #assert scale_base is not None
-                importance_map =  self.mask_conv(scale)
+                if self.double_dim:
+                    importance_map = self.mask_conv(scale_base)
+                else:
+                    importance_map =  self.mask_conv(scale) 
                 return ste_round(importance_map)
 
                

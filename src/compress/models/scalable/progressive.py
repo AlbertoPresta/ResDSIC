@@ -73,7 +73,7 @@ class ProgressiveWACNN(WACNN):
 
 
         self.scalable_levels = len(self.lmbda_list)
-        self.masking = ChannelMask(self.mask_policy, self.scalable_levels,self.dim_chunk,num_levels =self.num_slices_list[1] )
+        #self.masking = ChannelMask(self.mask_policy, self.scalable_levels,self.dim_chunk,num_levels =self.num_slices_list[1] )
 
 
         self.gaussian_conditional = GaussianConditional(None)
