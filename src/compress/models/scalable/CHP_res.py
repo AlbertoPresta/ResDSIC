@@ -254,7 +254,7 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
 
 
 
-    def freeze_base_net(self,multiple_hyperprior,freeze_dec):
+    def freeze_base_net(self,multiple_hyperprior,freeze_dec = False):
 
         for p in self.g_s[0].parameters():
             p.requires_grad = False
@@ -566,7 +566,7 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
         return {
             "x_hat": x_hats,
             "likelihoods": {"y": y_likelihoods_b,"y_prog":y_likelihood_total,"z": z_likelihoods},
-            "y_hat":y_hat_total,"y_base":y_hat_b,"y_prog":y_likelihood_quality,
+            "y_hat":y_hat_total,"y_base":y_hat_b,"y_prog":y_hat_enhanced,
             "mu_base":mu_base,"mu_prog":mu_prog,"std_base":std_base,"std_prog":std_prog
         }
     
@@ -856,8 +856,8 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
             mu_base.append(mu)
             std_base.append(scale) 
             if quality == 0:
-                mu_prog.append(mu + 1e-8)
-                std_prog.append(scale + 1e-8)
+                mu_prog.append(mu + 1e-3)
+                std_prog.append(scale + 1e-3)
 
             scales_base.append(scale)
 
@@ -880,7 +880,7 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
             return {
                 "x_hat": x_hat,
                 "likelihoods": {"y": y_likelihoods,"z": z_likelihoods},
-            "y_hat":y_hat,"y_base":y_hat,"y_prog":y_likelihood_quality,
+            "y_hat":y_hat,"y_base":y_hat,"y_prog":y_hat,
             "mu_base":mu_base,"mu_prog":mu_prog,"std_base":std_base,"std_prog":std_prog
 
             }             
