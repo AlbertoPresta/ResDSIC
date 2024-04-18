@@ -70,7 +70,9 @@ def main(argv):
                  "res_m4_005_06_encdec_blocked_kd9":"m4_pret_frozen_kd",
                  "res_m4_005_05_encdec":"m4_memd_005",
                  "res_m4_0025_05_encdec":"m4_memd_0025",
-                 "res_m2_md":"m2_md"}
+                 "res_m4_0035_05_encdec_k9":"me_memd_kd",
+                 "res_m2_md":"m2_md",
+                 "me_s_m4__0.005_0.05_":"me_005"}  
 
     for check in args.checkpoint:
         print("************** ",check," **************************")
@@ -89,6 +91,12 @@ def main(argv):
             new_args.multiple_hyperprior = False
         else: 
             print("l'args ha il multiple_hyperprior!")
+
+
+        if "double_dim" not in new_args:
+            new_args.double_dim = False
+        else: 
+            print("l'args ha il double_dim!")
 
         lmbda_list = new_args.lmbda_list
         net = get_model(new_args,device, lmbda_list)
@@ -135,8 +143,8 @@ def main(argv):
 
     decoded_time["tri_planet_23"] = dec_time_tri_planet_23 
 
-    #psnr_res["base"] =   [29.20, 30.59,32.26,34.15,35.91,37.72]
-    #bpp_res["base"] =  [0.127,0.199,0.309,0.449,0.649,0.895]
+    psnr_res["base"] =   [ 30.59,32.26,34.15,35.91,37.72]
+    bpp_res["base"] =  [0.199,0.309,0.449,0.649,0.895]
 
     
     bpp_res["tri_planet_23"] =  tri_planet_23_bpp

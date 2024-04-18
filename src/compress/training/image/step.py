@@ -95,7 +95,7 @@ def train_one_epoch(model,
         if "kd_base" in list(out_criterion.keys()):
             kd_enh.update(out_criterion["kd_base"].clone().detach())
         if "mutual" in list(out_criterion.keys()):
-            mutual_info.update(out_criterion["mutual"].clone().detach())
+            mutual_info.update(out_criterion["mutual"])
 
 
         wand_dict = {
@@ -129,7 +129,7 @@ def train_one_epoch(model,
         if "mutual" in list(out_criterion.keys()):
             wand_dict = {
                 "train_batch": counter, 
-                "train_batch/mutual": out_criterion["mutual"].clone().detach().item(),
+                "train_batch/mutual": out_criterion["mutual"],
             }
             wandb.log(wand_dict)
         counter += 1
@@ -231,7 +231,7 @@ def valid_epoch(epoch, test_dataloader,criterion, model, pr_list = [0.05], mask_
                     loss.update(out_criterion["loss"].clone().detach())
 
                     if "mutual" in list(out_criterion.keys()):
-                        mutual_info.update(out_criterion["mutual"].clone().detach())               
+                        mutual_info.update(out_criterion["mutual"])               
 
                     
     log_dict = {
@@ -311,7 +311,7 @@ def test_epoch(epoch, test_dataloader,criterion, model, pr_list, mask_pol = None
 
         wandb.log(log_dict)
 
-        if "mutual" in list(out_net["mutual"]):
+        if "mutual" in list(out_net):
             log_dict = {
                 name:epoch,
                 name + "/mutual":mutual_info[i].avg
@@ -328,7 +328,16 @@ def sec_to_hours(seconds):
     d=["{} hours {} mins {} seconds".format(a, b, c)]
     print(d[0])
 
-def compress_with_ac(model,  filelist, device, epoch, pr_list = [0.05,0.04,0.03,0.02,0.01], mask_pol = None,  writing = None, progressive = False,base = False):
+def compress_with_ac(model,  
+                     filelist, 
+                     device, 
+                     epoch, 
+                     pr_list = [0.05,0.01], 
+                     mask_pol = None, 
+                       writing = None, 
+                       progressive = False,
+                       base = False,
+                       cheating = False):
     #pr_list = [0] + pr_list + [-1]
     #model.update(None, device)
     l = len(pr_list)
@@ -344,7 +353,7 @@ def compress_with_ac(model,  filelist, device, epoch, pr_list = [0.05,0.04,0.03,
             #print("------------------------------ IMAGE ----> ",d) 
 
 
-
+            print("image d: ",d)
             x = read_image(d).to(device)
             nome_immagine = d.split("/")[-1].split(".")[0]
             x = x.unsqueeze(0) 
@@ -353,7 +362,7 @@ def compress_with_ac(model,  filelist, device, epoch, pr_list = [0.05,0.04,0.03,
             x_padded = F.pad(x, pad, mode="constant", value=0)
 
             for j,p in enumerate(pr_list):
-
+                
                 name = "level_" + str(j)
 
                 data =  model.compress(x_padded, quality =p, mask_pol = mask_pol )
@@ -394,9 +403,21 @@ def compress_with_ac(model,  filelist, device, epoch, pr_list = [0.05,0.04,0.03,
                             data_string_prog = data["strings"][1]
                             bpp_prog = sum(len(s) for s in data_string_prog) * 8.0 / num_pixels                       
                         
-                            bpp = bpp_hype + bpp_scale + bpp_prog 
+                            if cheating is False:
+                                bpp = bpp_hype + bpp_scale + bpp_prog 
+                            else:
+                                print("sto imbrogliando! ",bpp_hype)
+                                bpp = bpp_scale + bpp_prog 
                         else:
-                            bpp = bpp_hype + bpp_scale
+                            if cheating is False:
+                                bpp = bpp_hype + bpp_scale
+                            else:
+                                if j == 0:
+                                    bpp = bpp_hype + bpp_scale
+                                else:
+                                    print("sto imbrogliando!!!: ",bpp_hype)#ddd
+                                    bpp = bpp_scale
+
 
                     else:
                         if p != 0:

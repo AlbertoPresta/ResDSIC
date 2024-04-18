@@ -460,24 +460,34 @@ class DistortionLoss(nn.Module):
 
 class ScalableMutualRateDistortionLoss(nn.Module):
 
-    def __init__(self, weight = 255**2, lmbda_list = [0.75],  device = "cuda"):
+    def __init__(self, weight = 255**2, lmbda_list = [0.75],gamma = 0,  device = "cuda"):
         super().__init__()
         self.scalable_levels = len(lmbda_list)
         self.lmbda = torch.tensor(lmbda_list).to(device) 
         self.weight = weight
         self.device = device
+        self.gamma = gamma
 
 
 
-    def compute_pearson(self,x,y,mu,std):
+    def compute_pearson(self,x,y,mu,std, eps = 1e-6):
         #assert isistance(mu,List)
         #assert isistance(std,List)
-        cov_xy = torch.mean((x-mu[0])*(y-mu[1]))
-        return cov_xy/(std[0]*std[1]) 
+
+        vx = x - mu[0]
+        vy = y - mu[1]
+        numerator = torch.sum(vx*vy)
+        #denominator = (torch.norm(vx**2)*torch.norm(vy**2)) + eps
+        denominator = (std[0]*std[1]) + eps
+        
+        pearson =  numerator/denominator
+        return torch.abs(pearson.mean())
 
 
-    def compute_mutual(self,pears_corr, eps = 1e-9):
+    def compute_mutual(self,pears_corr, eps = 1e-7):
         argument = 1 - pears_corr**2 + eps 
+
+        print("argument: ",argument)
         return -0.5*math.log(argument)
 
 
@@ -528,13 +538,16 @@ class ScalableMutualRateDistortionLoss(nn.Module):
 
         # compute mutual information
 
-        mu_s = (output["mu_base"],output["mu_prog"])
-        std_s = (output["std_base"],output["std_prog"])
+        mu_s = ( torch.cat(output["mu_base"],dim = 1) , torch.cat(output["mu_prog"],dim = 1) )
+        std_s = ( torch.cat(output["std_base"],dim = 1) , torch.cat(output["std_prog"],dim = 1) )
         out["pearson"] = self.compute_pearson(output["y_base"],output["y_prog"],mu_s,std_s)
-        out["mutual"] = self.compute_mutual(out["pearson"]).mean()
-        
 
-        out["loss"] = out["bpp_loss"] + self.weight*(lmbda*out["mse_loss"]).mean() + out["mutual"]
+        if self.gamma != 0:
+            out["mutual"] = self.compute_mutual(out["pearson"])
+            out["loss"] = out["bpp_loss"] + self.weight*(lmbda*out["mse_loss"]).mean() + out["mutual"]
+        else:
+            out["mutual"] = self.weight*(lmbda*out["mse_loss"]).mean()*0.0
+            out["loss"] = out["bpp_loss"] + self.weight*(lmbda*out["mse_loss"]).mean()            
         return out
 
 

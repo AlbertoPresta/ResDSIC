@@ -100,37 +100,7 @@ def plot_rate_distorsion(bpp_res, psnr_res,epoch, eest = "compression"):
         legenda[c]["markersize"] = [5]*300    
 
 
-    """
-    legenda["base"] = {}
-    legenda["our"] = {}
-    legenda["tri_planet_22"] = {}
-    legenda["tri_planet_23"] = {}
 
-
-
-
-    legenda["base"]["colore"] = [palette[0],'-']
-    legenda["base"]["legends"] = "reference"
-    legenda["base"]["symbols"] = ["*"]*6
-    legenda["base"]["markersize"] = [5]*6
-
-    legenda["our"]["colore"] = [palette[3],'-']
-    legenda["our"]["legends"] = "proposed"
-    legenda["our"]["symbols"] = ["*"]*len(psnr_res["our"])
-    legenda["our"]["markersize"] = [5]*len(psnr_res["our"])
-
-
-    legenda["tri_planet_22"]["colore"] = [palette[5],'-']
-    legenda["tri_planet_22"]["legends"] = "tri_planet_22"
-    legenda["tri_planet_22"]["symbols"] = ["*"]*27
-    legenda["tri_planet_22"]["markersize"] = [5]*27
-
-
-    legenda["tri_planet_23"]["colore"] = [palette[7],'-']
-    legenda["tri_planet_23"]["legends"] = "tri_planet_23"
-    legenda["tri_planet_23"]["symbols"] = ["*"]*27
-    legenda["tri_planet_23"]["markersize"] = [5]*27
-    """
     plt.figure(figsize=(12,8)) # fig, axes = plt.subplots(1, 1, figsize=(8, 5))
 
 
@@ -156,7 +126,7 @@ def plot_rate_distorsion(bpp_res, psnr_res,epoch, eest = "compression"):
     
         plt.plot(bpp,psnr,"-" ,color = colore, label =  leg ,markersize=7)
         #for x, y, marker, markersize_t in zip(bpp, psnr, symbols, markersize):
-        plt.plot(bpp, psnr, marker="o", markersize=7, color =  colore)
+        #plt.plot(bpp, psnr, marker="o", markersize=7, color =  colore)
                 
 
 
@@ -221,22 +191,7 @@ def plot_decoded_time(bpp_res, time_res,epoch, eest = "compression"):
 
 
 
-    """
-    legenda["our"]["colore"] = [palette[3],'-']
-    legenda["our"]["legends"] = "proposed"
-    legenda["our"]["symbols"] = ["*"]*30
-    legenda["our"]["markersize"] = [5]*30
 
-
-
-
-
-    legenda["tri_planet_23"]["colore"] = [palette[7],'-']
-    legenda["tri_planet_23"]["legends"] = "tri_planet_23"
-    legenda["tri_planet_23"]["symbols"] = ["*"]*50
-    legenda["tri_planet_23"]["markersize"] = [5]*50
-    """
-    
     plt.figure(figsize=(12,8)) # fig, axes = plt.subplots(1, 1, figsize=(8, 5))
 
 

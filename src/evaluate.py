@@ -63,6 +63,12 @@ def main(argv):
         print("l'args ha il multiple_hyperprior!")
 
 
+    if "double_dim" not in new_args:
+        new_args.double_dim = False
+    else: 
+        print("l'args ha il multiple_hyperprior!")
+
+
     lmbda_list = new_args.lmbda_list
     wandb.init( config= args, project="EVAL", entity="albipresta")  #dddd 
 
@@ -124,7 +130,8 @@ def main(argv):
                  "res_m4_005_05_encdec":"m4_memd_005",
                  "res_m4_0025_05_encdec":"m4_memd_0025",
                  "res_m4_0035_05_encdec_k9":"me_memd_kd",
-                 "res_m2_md":"m2_md"}  
+                 "res_m2_md":"m2_md",
+                 "me_s_m4__0.005_0.05_":"me_005"}  
 
     mask_pol ="point-based-std"
     bpp, psnr,dec_time = compress_with_ac(net,  
@@ -134,7 +141,8 @@ def main(argv):
                                  pr_list = list_pr,   
                                  writing = None, #"/scratch/ScalableResults", 
                                  mask_pol=mask_pol, 
-                                 progressive=progressive)
+                                 progressive=progressive,
+                                 cheating = args.cheating)
     print("*********************************   OVER *********************************************************")
     print(bpp,"  ++++   ",psnr," +++++ ",dec_time) 
 

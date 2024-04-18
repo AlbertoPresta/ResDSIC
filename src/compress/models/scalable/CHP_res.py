@@ -884,7 +884,7 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
             "mu_base":mu_base,"mu_prog":mu_prog,"std_base":std_base,"std_prog":std_prog
 
             }             
-
+        y_hat_b = torch.cat(y_hat_slices,dim = 1)
         y_hat_slices_quality = []
 
         y_likelihood_quality = []
@@ -952,7 +952,7 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
         return {
             "x_hat": x_hat,
             "likelihoods": {"y": y_likelihoods,"z": z_likelihoods},
-            "y_hat":y_hat,"y_base":y_hat,"y_prog":y_hat_p,
+            "y_hat":y_hat_p,"y_base":y_hat_b,"y_prog":y_hat_p,
             "mu_base":mu_base,"mu_prog":mu_prog,"std_base":std_base,"std_prog":std_prog
 
         }     

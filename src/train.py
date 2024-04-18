@@ -95,12 +95,17 @@ def main(argv):
 
     
     if  args.model == "restcm": 
-        wandb.init( config= args, project="ResDSIC-tcm", entity="albipresta") 
+        wandb.init( config= args, project="ResDSIC-tcm", entity="albipresta")
+    elif args.mutual: 
+        wandb.init( config= args, project="ResDSIC-mutual", entity="albipresta") 
     else:
-        wandb.init( config= args, project="ResDSIC-mask", entity="albipresta")  #dddd  
+        wandb.init( config= args, project="ResDSIC-dsic", entity="albipresta")  #dddd  
     if args.seed is not None:
         torch.manual_seed(args.seed)
         random.seed(args.seed)
+    
+
+    print("initialize dataset")
     
     train_transforms = transforms.Compose(
         [transforms.RandomCrop(args.patch_size), transforms.ToTensor()]
@@ -171,10 +176,16 @@ def main(argv):
         print("entro qua e continuo il training")
         checkpoint = torch.load(args.checkpoint, map_location=device)
         new_args = checkpoint["args"]
+        if "double_dim" not in new_args:
+            new_args.double_dim = False
         net = get_model(new_args,device, lmbda_list)
         net.load_state_dict(checkpoint["state_dict"],strict = True) 
         net.update() 
         last_epoch = checkpoint["epoch"]
+
+        optimizer.load_state_dict(checkpoint["optimizer"])
+        #aux_optimizer.load_state_dict(checkpoint["aux_optimizer"])
+        lr_scheduler.load_state_dict(checkpoint["lr_scheduler"])
 
 
     elif  args.checkpoint != "none" and args.continue_training is False:  # load from previous checkpoint
@@ -190,7 +201,7 @@ def main(argv):
 
         checkpoin_base_model = dict_base_model[args.checkpoint_base]
         base_checkpoint = torch.load(checkpoin_base_model,map_location=device)
-        new_check = initialize_model_from_pretrained(base_checkpoint, args.multiple_hyperprior)
+        new_check = initialize_model_from_pretrained(base_checkpoint, args)
         net.load_state_dict(new_check,strict = False)
         net.update() 
         if args.freeze_base:
@@ -227,6 +238,9 @@ def main(argv):
     for epoch in range(last_epoch, args.epochs):
         print("******************************************************")
         print("epoch: ",epoch)
+        if epoch > 2 and args.mutual:
+            print("inizio a considerare la correlazione, speriamo!")
+            criterion.gamma = 1
         start = time.time()
         #print(f"Learning rate: {optimizer.param_groups[0]['lr']}")
         num_tainable = net.print_information()
