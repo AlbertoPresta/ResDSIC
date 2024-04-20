@@ -150,10 +150,8 @@ class HyperpriorMasked(Hyperprior):
         self.masking = Mask(self.mask_policy,scalable_levels = self.scalable_levels)
     
 
-    def forward(self, y, quality, mask_pol = None, training = True,y_b = None):
+    def forward(self, y, quality, mask_pol = None, training = True):
         
-        
-
         mask_pol  = self.mask_policy if mask_pol is None else mask_pol
         
         z = self.hyper_encoder(y)
@@ -166,7 +164,10 @@ class HyperpriorMasked(Hyperprior):
         if quality == 0: # non maschero! 
             _, y_likelihoods = self.gaussian_conditional(y, scales, means)
             y_hat = quantize_ste(y - means) + means
-        return y_hat, z_hat, {"y": y_likelihoods, "z": z_likelihoods}
+        else:
+            _, y_likelihoods = self.gaussian_conditional(y, scales, means)
+            y_hat = quantize_ste(y - means) + means           
+        return y_hat, {"y": y_likelihoods, "z": z_likelihoods}
 
     def compress(self, y,quality,mask_pol):
         y_b, y_p = y.chunck(2,1)

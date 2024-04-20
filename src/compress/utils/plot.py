@@ -124,9 +124,9 @@ def plot_rate_distorsion(bpp_res, psnr_res,epoch, eest = "compression"):
         bpp = torch.tensor(bpp).cpu()
         psnr = torch.tensor(psnr).cpu()
     
-        plt.plot(bpp,psnr,"-" ,color = colore, label =  leg ,markersize=7)
+        plt.plot(bpp,psnr,"-" ,color = colore, label =  leg ,markersize=8)
         #for x, y, marker, markersize_t in zip(bpp, psnr, symbols, markersize):
-        #plt.plot(bpp, psnr, marker="o", markersize=7, color =  colore)
+        plt.plot(bpp, psnr, marker="o", markersize=4, color =  colore)
                 
 
 

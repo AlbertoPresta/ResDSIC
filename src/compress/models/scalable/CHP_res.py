@@ -101,7 +101,7 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
             )
 
 
-        if self.joiner_policy == "channel_cond":
+        if self.joiner_policy == "cond":
             self.joiner = nn.ModuleList(
                 nn.Sequential(
                     conv(self.dim_chunk*2, 64, stride=1, kernel_size=3),
@@ -345,8 +345,9 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
     def merge(self,y_base,y_enhanced,slice_index):
         if self.joiner_policy == "res":
             return y_base + y_enhanced 
-        elif self.joiner_policy == "conc":
-            return torch.cat([y_base,y_enhanced],dim = 1)
+        elif self.joiner_policy == "cond":
+            c = torch.cat([y_base,y_enhanced],dim = 1)
+            return self.joiner[slice_index](c)
         else: 
             c = torch.cat([y_base,y_enhanced],dim = 1)
             return self.joiner[slice_index](c)

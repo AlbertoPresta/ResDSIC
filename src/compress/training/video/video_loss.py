@@ -242,15 +242,17 @@ class ScalableRateDistortionLoss(nn.Module):
         distortions_base = []
         scaled_distortions_prog = []
         distortions_prog = []
-        for i, (x_hat, x) in enumerate(zip(output["x_hat"], target)):
-            scaled_distortion_base, distortion_base = self._get_scaled_distortion(x_hat[0], x)
-
-            distortions_base.append(distortion_base)
-            scaled_distortions_base.append(scaled_distortion_base)
-
-            scaled_distortion_prog, distortion_prog = self._get_scaled_distortion(x_hat[1], x)
-            distortions_prog.append(distortion_prog)
-            scaled_distortions_prog.append(scaled_distortion_prog)
+        for j in range(2):
+            for i, (x_hat, x) in enumerate(zip(output["x_hat"][j], target)):
+                
+                if j == 0:
+                    scaled_distortion_base, distortion_base = self._get_scaled_distortion(x_hat, x)
+                    distortions_base.append(distortion_base)
+                    scaled_distortions_base.append(scaled_distortion_base)
+                else:
+                    scaled_distortion_prog, distortion_prog = self._get_scaled_distortion(x_hat, x)
+                    distortions_prog.append(distortion_prog)
+                    scaled_distortions_prog.append(scaled_distortion_prog)
 
         # aggregate (over batch and frame dimensions).
         out["mse_base"] = torch.stack(distortions_base).mean()

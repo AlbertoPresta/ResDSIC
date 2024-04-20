@@ -49,7 +49,7 @@ def parse_args_mask(argv):
     parser.add_argument("--only_mask", action="store_true", help="Use cuda")
     parser.add_argument("--aux-learning-rate", default=1e-3, type=float, help="Auxiliary loss learning rate (default: %(default)s)",)
 
-    parser.add_argument("--lambda_list",dest="lmbda_list", nargs='+', type=float, default = [ 0.005,  0.0009, 0.050])
+    parser.add_argument("--lambda_list",dest="lmbda_list", nargs='+', type=float, default = [ 0.005,  0.0009, 0.1])
 
 
     parser.add_argument("--save_path", type=str, default="/scratch/ResDSIC/models/", help="Where to Save model")
@@ -92,18 +92,18 @@ def parse_args_video(argv):
 
 def parse_args(argv):
     parser = argparse.ArgumentParser(description="Example training script.") #dddd
-    parser.add_argument("-m","--model",default="channel",choices=models.keys(),help="Model architecture (default: %(default)s)",)
+    parser.add_argument("-m","--model",default="restcm",choices=models.keys(),help="Model architecture (default: %(default)s)",)
     parser.add_argument("-d", "--dataset", type=str, default = "/scratch/dataset/openimages", help="Training dataset")
     parser.add_argument("-e","--epochs",default=140,type=int,help="Number of epochs (default: %(default)s)",)
     parser.add_argument( "-lr", "--learning-rate", default=1e-4, type=float, help="Learning rate (default: %(default)s)",)
     parser.add_argument("-n","--num-workers",type=int,default=8,help="Dataloaders threads (default: %(default)s)",)
     #dddd
 
-    parser.add_argument("--lambda_list",dest="lmbda_list", nargs='+', type=float, default = [ 0.005, 0.05])
+    parser.add_argument("--lambda_list",dest="lmbda_list", nargs='+', type=float, default = [ 0.005,0.05])
     parser.add_argument("--division_dimension", nargs='+', type=int, default = [320, 640])
     parser.add_argument("--inner_dimensions", nargs='+', type=int, default = [192, 192]) #ddddfffff
     parser.add_argument("--list_quality", nargs='+', type=int, default = [0])
-    parser.add_argument( "--batch_size", type=int, default=16, help="batch_size")
+    parser.add_argument( "--batch_size", type=int, default=8, help="batch_size")
     parser.add_argument( "--dim_chunk", type=int, default=32, help="dim chunk")
 
 
@@ -111,11 +111,11 @@ def parse_args(argv):
     parser.add_argument("--freeze_base", action="store_true", help="KD base")#dddd
 
 
-    parser.add_argument("--num_images", type=int, default=300000, help="num images") #ddd
+    parser.add_argument("--num_images", type=int, default=300000, help="num images") #ddddddd
 
-    parser.add_argument("--N", type=int, default=192, help="N")#ddddd#ddd
+    parser.add_argument("--N", type=int, default=128, help="N")#ddddd#ddd
     parser.add_argument("--M", type=int, default=640, help="M")
-    parser.add_argument("--patience", type=int, default=5, help="patience")#ddddddd
+    parser.add_argument("--patience", type=int, default=6, help="patience")#ddddddd
 
     parser.add_argument("--type_loss", type=int, default=0, help="v")#dddddddttt
     parser.add_argument("--code", type=str, default = "0001", help="Batch size (default: %(default)s)")
@@ -142,10 +142,10 @@ def parse_args(argv):
     parser.add_argument("--sampling_training", action="store_true", help="Save model to disk")
     parser.add_argument("--joiner_policy", type=str, default = "res",help="Path to a checkpoint") 
     parser.add_argument("--clip_max_norm",default=1.0,type=float,help="gradient clipping max norm (default: %(default)s",)
-    parser.add_argument("--checkpoint", type=str, default = "/scratch/ResDSIC/models/me_s_m4__0.005_0.05_/_very_best.pth.tar")
+    parser.add_argument("--checkpoint", type=str, default = "none") #dddd
     parser.add_argument("--checkpoint_base", type=str, default =  "none",help="Path to a checkpoint") #"/scratch/base_devil/weights/q2/model.pth"
     parser.add_argument("--checkpoint_enh", type=str, default =  "none",help="Path to a checkpoint") #"/scratch/base_devil/weights/q5/model.pth"
     parser.add_argument("--tester", action="store_true", help="use common lrp for progressive") #dddddd
-    parser.add_argument("--support_progressive_slices",default=8,type=int,help="support_progressive_slices",) #ssss
+    parser.add_argument("--support_progressive_slices",default=4,type=int,help="support_progressive_slices",) #ssss
     args = parser.parse_args(argv)
     return args

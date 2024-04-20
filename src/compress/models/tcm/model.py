@@ -334,10 +334,19 @@ class TCM(CompressionModel):
         dpr = [x.item() for x in torch.linspace(0, drop_path_rate, sum(config))]
         begin = 0
 
-        self.m_down1 = [ConvTransBlock(self.N, self.N, self.head_dim[0], self.window_size, dpr[i+begin], 'W' if not i%2 else 'SW') 
+        self.m_down1 = [ConvTransBlock(self.N,
+                                        self.N, 
+                                        self.head_dim[0], 
+                                        self.window_size,
+                                        dpr[i+begin], 'W' if not i%2 else 'SW') 
                       for i in range(config[0])] + \
                       [ResidualBlockWithStride(2*N, 2*N, stride=2)]
-        self.m_down2 = [ConvTransBlock(self.N, self.N, self.head_dim[1], self.window_size, dpr[i+begin], 'W' if not i%2 else 'SW')
+        self.m_down2 = [ConvTransBlock(self.N,
+                                        self.N, 
+                                        self.head_dim[1],
+                                          self.window_size, 
+                                          dpr[i+begin], 
+                                          'W' if not i%2 else 'SW')
                       for i in range(config[1])] + \
                       [ResidualBlockWithStride(2*N, 2*N, stride=2)]
         self.m_down3 = [ConvTransBlock(self.N, self.N, self.head_dim[2], self.window_size, dpr[i+begin], 'W' if not i%2 else 'SW')

@@ -1,10 +1,16 @@
-from .model import TCM,SWAtten
+from .model import TCM,SWAtten, ConvTransBlock
 from compress.layers.mask_layers import ChannelMask
 import torch.nn as nn
 from ..utils import conv
 import torch 
 from compress.ops import ste_round
 from compressai.layers import ResidualBlockUpsample
+from compressai.layers import (
+    ResidualBlockUpsample,
+    ResidualBlockWithStride,
+    conv3x3
+)
+
 
 
 
@@ -25,7 +31,7 @@ class ResTCM(TCM):
                 mask_policy = "random",
                 lmbda_list = [0.0025,0.05],
                 multiple_decoder = True,
-                multiple_encoder = False,
+                multiple_encoder =True,
                 joiner_policy = "res",
                 support_progressive_slices = 2,
                 **kwargs):
@@ -44,7 +50,9 @@ class ResTCM(TCM):
         self.mask_policy = mask_policy
         self.lmbda_list = lmbda_list 
 
-        
+        dpr = [x.item() for x in torch.linspace(0, drop_path_rate, sum(config))]
+        begin = 0
+
 
         self.num_slices =  int(self.M//self.dim_chunk) 
 
@@ -67,13 +75,39 @@ class ResTCM(TCM):
                                    self.dim_chunk,num_levels = self.num_slices_list[1] )
         
         self.quality_list = [i for i in range(self.scalable_levels)]
-        
+
+        if self.multiple_encoder:
+            print("entro qua!")
+
+            self.m_down3 = [ConvTransBlock(self.N, self.N, self.head_dim[2], self.window_size, dpr[i+begin], 'W' if not i%2 else 'SW')
+                      for i in range(config[2])] + \
+                      [conv3x3(2*N, M//2, stride=2)]
+
+            self.g_a = nn.ModuleList(
+                        nn.Sequential(*[ResidualBlockWithStride(3, 2*N, 2)] \
+                                    + self.m_down1 \
+                                    + self.m_down2 \
+                                    + self.m_down3) for _ in range(2)
+            )
+        else:
+
+            # da mettere a posto l'output
+            self.g_a = nn.Sequential(*[ResidualBlockWithStride(3, 2*N, 2)] \
+                                        + self.m_down1 \
+                                        + self.m_down2 \
+                                        + self.m_down3)
+
         if self.multiple_decoder:
             self.g_s = nn.ModuleList(
                 nn.Sequential(*[ResidualBlockUpsample(self.dimensions_M[0], 2*self.N, 2)] \
                                 + self.m_up1 \
                                 + self.m_up2 \
                                 + self.m_up3) for _ in range(2))
+        else:
+            self.g_s = nn.Sequential(*[ResidualBlockUpsample(M, 2*N, 2)] \
+                                     + self.m_up1 \
+                                        + self.m_up2 \
+                                            + self.m_up3)
 
 
         self.cc_mean_transforms = nn.ModuleList(
@@ -183,7 +217,7 @@ class ResTCM(TCM):
             ) for i in range(self.num_slice_cumulative_list[1] - self.num_slice_cumulative_list[0])
         )
 
-        if self.joiner_policy == "channel_cond":
+        if self.joiner_policy == "cond":
             self.joiner = nn.ModuleList(
                 nn.Sequential(
                     conv(self.dim_chunk*2, 64, stride=1, kernel_size=3),
@@ -230,8 +264,16 @@ class ResTCM(TCM):
             mask_pol = self.mask_policy
         list_quality = self.define_quality(quality)  
     
-        y = self.g_a(x)
+        
+        if self.multiple_encoder is False:
+            y = self.g_a(x)
+        else:
+            y_base = self.g_a[0](x)
+            y_enh = self.g_a[1](x)
+
+            y = torch.cat([y_base,y_enh],dim = 1).to(x.device)
         y_shape = y.shape[2:]
+ 
         z = self.h_a(y)
         _, z_likelihoods = self.entropy_bottleneck(z)
 
@@ -371,11 +413,10 @@ class ResTCM(TCM):
         return {
             "x_hat": x_hats,
             "likelihoods": {"y": y_likelihoods_b,"y_prog":y_likelihood_total,"z": z_likelihoods},
-            "z_hat":z_hat,
             "y_hat":y_hat_total
+
         }
     
-
 
     def compress(self, x,quality = 0.0, mask_pol = None):
 
@@ -385,9 +426,10 @@ class ResTCM(TCM):
         if self.multiple_encoder is False:
             y = self.g_a(x)
         else:
-            y_base = self.g_a(x)
-            y_enh = self.g_a_enh(x)
+            y_base = self.g_a[0](x)
+            y_enh = self.g_a[1](x)
             y = torch.cat([y_base,y_enh],dim = 1).to(x.device)
+
         y_shape = y.shape[2:]
 
         z = self.h_a(y)
@@ -606,9 +648,10 @@ class ResTCM(TCM):
         if self.multiple_encoder is False:
             y = self.g_a(x)
         else:
-            y_base = self.g_a(x)
-            y_enh = self.g_a_enh(x)
-            y = torch.cat([y_base,y_enh],dim = 1).to(x.device) #dddd
+            y_base = self.g_a[0](x)
+            y_enh = self.g_a[1](x)
+            y = torch.cat([y_base,y_enh],dim = 1).to(x.device)
+
         y_shape = y.shape[2:]
         z = self.h_a(y)
         _, z_likelihoods = self.entropy_bottleneck(z) #ddd
@@ -671,8 +714,8 @@ class ResTCM(TCM):
             return {
                 "x_hat": x_hat,
                 "likelihoods": {"y": y_likelihoods,"z": z_likelihoods},
-                "z_hat":z_hat
-            }             
+
+            }      
 
         y_hat_slices_quality = []
 
@@ -735,15 +778,15 @@ class ResTCM(TCM):
         return {
             "x_hat": x_hat,
             "likelihoods": {"y": y_likelihoods,"z": z_likelihoods},
-            "z_hat":z_hat
+
         }     
 
     def print_information(self):
         if self.multiple_encoder is False:
             print(" g_a: ",sum(p.numel() for p in self.g_a.parameters()))
         else:
-            print(" g_a: ",sum(p.numel() for p in self.g_a.parameters()))
-            print(" g_a_enh: ",sum(p.numel() for p in self.g_a_enh.parameters()))
+            print(" g_a: ",sum(p.numel() for p in self.g_a[0].parameters()))
+            print(" g_a_enh: ",sum(p.numel() for p in self.g_a[1].parameters()))
         print(" h_a: ",sum(p.numel() for p in self.h_a.parameters()))
         print(" h_means_a: ",sum(p.numel() for p in self.h_mean_s.parameters()))
         print(" h_scale_a: ",sum(p.numel() for p in self.h_scale_s.parameters()))

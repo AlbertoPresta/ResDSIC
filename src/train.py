@@ -98,8 +98,10 @@ def main(argv):
         wandb.init( config= args, project="ResDSIC-tcm", entity="albipresta")
     elif args.mutual: 
         wandb.init( config= args, project="ResDSIC-mutual", entity="albipresta") 
+    elif args.joiner_policy == "cond":
+        wandb.init( config= args, project="ResDSIC-cond", entity="albipresta") 
     else:
-        wandb.init( config= args, project="ResDSIC-dsic", entity="albipresta")  #dddd  
+        wandb.init( config= args, project="ResDSIC-mask", entity="albipresta")  #dddd dddd ddddd
     if args.seed is not None:
         torch.manual_seed(args.seed)
         random.seed(args.seed)
@@ -161,7 +163,7 @@ def main(argv):
     optimizer, aux_optimizer = configure_optimizers(net, args)
     if "tcm" in args.model:
         print("multistep")
-        lr_scheduler = optim.lr_scheduler.MultiStepLR(optimizer, [45,48], gamma=0.1, last_epoch=-1) 
+        lr_scheduler = optim.lr_scheduler.MultiStepLR(optimizer, [40,45], gamma=0.1, last_epoch=-1) 
     else:
         lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, "min", factor=0.3, patience=args.patience)
     
