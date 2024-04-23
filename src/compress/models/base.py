@@ -63,7 +63,7 @@ class CompressionModel(nn.Module):
             if not any(x.startswith(name) for x in state_dict.keys()):
                 continue
             
-            """
+            
             if isinstance(module, EntropyBottleneck):
                 update_registered_buffers(
                     module,
@@ -79,7 +79,7 @@ class CompressionModel(nn.Module):
                     ["_quantized_cdf", "_offset", "_cdf_length", "scale_table"],
                     state_dict,
                 )
-            """
+            
 
         return nn.Module.load_state_dict(self, state_dict, strict=strict)
 

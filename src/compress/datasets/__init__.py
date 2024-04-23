@@ -14,5 +14,6 @@
 
 from .utils import ImageFolder
 from .video import VideoFolder, Vimeo90kDataset
+from .rawvideo import RawVideoSequence,VideoFormat
 
-__all__ = ["ImageFolder"]
+__all__ = ["ImageFolder","RawVideoSequence","VideoFolder","VideoFormat"]

@@ -46,7 +46,7 @@ models = {
 }
 
 
-video_models = {"ssf":ScaleSpaceFlow, 
+video_models = {"ssf2020":ScaleSpaceFlow, 
                 "full":ScalableScaleSpaceFlow,
                 "res":ResScalableScaleSpaceFlow}
 
