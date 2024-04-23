@@ -110,7 +110,7 @@ def get_model(args,device, lmbda_list):
                                 support_progressive_slices =args.support_progressive_slices,
                                 double_dim = args.double_dim,
                                 shared_entropy_estimation = False,
-                                delta_encoder = args.delta_encode,
+                                delta_encode = args.delta_encode,
                         )  
     elif args.model == "progressive_res":
         net = models[args.model]( N = args.N,
