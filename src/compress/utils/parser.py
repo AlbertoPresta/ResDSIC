@@ -133,6 +133,7 @@ def parse_args(argv):
     parser.add_argument("--multiple_hyperprior", action="store_true", help="Use cuda")
     parser.add_argument("--double_dim", action="store_true", help="Use cuda")
     parser.add_argument("--mutual", action="store_true", help="Use cuda")
+    parser.add_argument("--delta_encode", action="store_true", help="delta encoder")
 
 
     parser.add_argument("-see","--shared_entropy_estimation", action="store_true", help="Use cuda")

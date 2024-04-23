@@ -40,6 +40,7 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
                 shared_entropy_estimation = False,
                 joiner_policy = "res",
                 support_progressive_slices = 0,
+                delta_encode = False,
                 double_dim = False,
                 **kwargs):
         
@@ -62,6 +63,7 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
         self.division_dimension = division_dimension
         assert self.shared_entropy_estimation is False 
         self.multiple_hyperprior = multiple_hyperprior
+        self.delta_encode = delta_encode
 
 
 
@@ -480,7 +482,11 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
 
             for slice_index in range(self.ns0,self.ns1):
                 y_slice = y_slices[slice_index]
+
                 current_index = slice_index%self.ns0
+                if self.delta_encode:
+                    y_slice = y_slice - y_slices[current_index] 
+
                 support_slices = self.determine_support(y_hat_slices_base,
                                                          current_index,
                                                          y_hat_slices_quality) #dddd
@@ -616,10 +622,14 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
         for slice_index in range(self.ns0):
             y_slice = y_slices[slice_index]
             indice = min(self.max_support_slices,slice_index%self.ns0)
+
+
             support_slices = (y_hat_slices if self.max_support_slices < 0 \
                                                         else y_hat_slices[:indice])               
             
             idx = slice_index%self.ns0
+
+
             mean_support = torch.cat([latent_means[:,:self.division_dimension[0]]] + support_slices, dim=1)
             scale_support = torch.cat([latent_scales[:,:self.division_dimension[0]]] + support_slices, dim=1) 
 
@@ -656,6 +666,9 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
 
             y_slice = y_slices[slice_index]
             current_index = slice_index%self.ns0
+
+            if self.delta_encode:
+                y_slice = y_slice - y_slices[current_index] 
 
             support_slices = self.determine_support(y_hat_slices,current_index,y_hat_slices_quality) 
             mean_support = torch.cat([latent_means[:,self.division_dimension[0]:]] + support_slices, dim=1)
@@ -895,6 +908,12 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
 
             y_slice = y_slices[slice_index]
             current_index = slice_index%self.ns0
+
+
+            if self.delta_encode:
+                y_slice = y_slice - y_slices[current_index] 
+
+            
             support_slices = self.determine_support(y_hat_slices,
                                                     current_index,
                                                     y_hat_slices_quality) 

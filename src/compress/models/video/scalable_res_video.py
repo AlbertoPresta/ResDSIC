@@ -252,8 +252,7 @@ class ResScalableScaleSpaceFlow(ScaleSpaceFlow):
             x_rec = [x_rec_b,x_rec_p]
 
             base_likelihoods = {"motion": motion_likelihoods_b,
-                                "residual":   res_likelihoods_b,
-                                   
+                                "residual":   res_likelihoods_b,     
                             }
                                 
 

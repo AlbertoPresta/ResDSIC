@@ -101,7 +101,7 @@ def main(argv):
     elif args.joiner_policy == "cond":
         wandb.init( config= args, project="ResDSIC-cond", entity="albipresta") 
     else:
-        wandb.init( config= args, project="ResDSIC-mask", entity="albipresta")  #dddd dddd ddddd
+        wandb.init( config= args, project="ResDSIC-delta", entity="albipresta")  #dddd dddd ddddd
     if args.seed is not None:
         torch.manual_seed(args.seed)
         random.seed(args.seed)

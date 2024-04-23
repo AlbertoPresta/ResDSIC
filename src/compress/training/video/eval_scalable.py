@@ -134,6 +134,7 @@ def run_inference_scalable(
     force: bool = False,
     trained_net: str = "",
     description: str = "",
+    write_results = False,
     **args: Any,
 ) -> Dict[str, Any]:
     
@@ -144,6 +145,7 @@ def run_inference_scalable(
         results_paths = []
         for filepath in filepaths:
             print("filepath: ",filepath)
+
             output_subdir = Path(outputdir) / Path(filepath).parent.relative_to(inputdir)
             output_subdir.mkdir(parents=True, exist_ok=True)
             sequence_metrics_path = output_subdir / f"{filepath.stem}-{trained_net}.json"

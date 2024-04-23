@@ -17,6 +17,8 @@ from compress.training.video.scalable_res_loss import ScalableResRateDistortionL
 from compress.datasets import Vimeo90kDataset
 from compress.utils.parser import parse_args_video
 from compress.models import video_models
+from compress.training.video.utils import  collect_videos
+from compress.training.video.eval_scalable import run_inference_scalable
 import os
 
 def sec_to_hours(seconds):
@@ -235,6 +237,22 @@ def main(argv):
         }
 
         wandb.log(log_dict)
+
+
+        if epoch%5==0:
+            filepaths = collect_videos(args.uvg_dataset)
+            mask_pol = "point-based-std" 
+            list_pr = [0,1,2,3,4,5,6,7,8,9,10]
+            print("qua faccio l'encoding effettivo!!!")
+            metrics = run_inference_scalable(
+                filepaths,
+                args.uvg_dataset,
+                net,
+                outputdir,
+                trained_net=trained_net,
+                description=description,
+                **args_dict,
+            )
 
 
         end = time.time()
