@@ -20,8 +20,7 @@ class ResScalableScaleSpaceFlow(ScaleSpaceFlow):
         mask_policy = "two-levels",
         multiple_res_encoder = True, 
         multiple_res_decoder = True,
-        multiple_motion_encoder = True,
-        multiple_motion_decoder = True,
+
         motion_input = "base",
         scalable_levels = 2,
         double_dim = False

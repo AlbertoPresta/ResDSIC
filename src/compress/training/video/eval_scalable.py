@@ -21,8 +21,56 @@ from .utils import (compute_metrics_for_frame,
                     crop,
                     convert_yuv420_to_rgb,
                     filesize,
-                    aggregate_results)
+                    aggregate_results,
+                    estimate_bits_frame)
 
+
+
+
+@torch.no_grad()
+def eval_model_entropy_estimation_scalable(net, sequence,mask_pol,q):
+    org_seq = RawVideoSequence.from_file(str(sequence))
+
+    if org_seq.format != VideoFormat.YUV420:
+        raise NotImplementedError(f"Unsupported video format: {org_seq.format}")
+
+    device = next(net.parameters()).device
+    num_frames = len(org_seq)
+    max_val = 2**org_seq.bitdepth - 1
+    results = defaultdict(list)
+    print(f" encoding {sequence.stem}", file=sys.stderr)
+    with tqdm(total=num_frames) as pbar:
+        for i in range(num_frames):
+            x_cur = convert_yuv420_to_rgb(org_seq[i], device, max_val)
+            x_cur, padding = pad(x_cur)
+
+            if i == 0:
+                x_rec, likelihoods = net.forward_keyframe(x_cur)  # type:ignore
+            else:
+                x_rec, likelihoods = net.forward_inter(x_cur, x_rec,mask_pol,q)  # type:ignore
+
+            x_rec = x_rec.clamp(0, 1)
+
+            metrics = compute_metrics_for_frame(
+                org_seq[i],
+                crop(x_rec, padding),
+                device,
+                max_val,
+            )
+            metrics["bitrate"] = estimate_bits_frame(likelihoods)
+
+            for k, v in metrics.items():
+                results[k].append(v)
+            pbar.update(1)
+
+    seq_results: Dict[str, Any] = {
+        k: torch.mean(torch.stack(v)) for k, v in results.items()
+    }
+    seq_results["bitrate"] = float(seq_results["bitrate"]) * org_seq.framerate / 1000
+    for k, v in seq_results.items():
+        if isinstance(v, torch.Tensor):
+            seq_results[k] = v.item()
+    return seq_results
 
 def load_checkpoint(arch: str, no_update: bool, checkpoint_path: str) -> nn.Module:
     print(checkpoint_path)
@@ -121,7 +169,7 @@ def eval_model_scalable(net, sequence, binpath,mask_pol, quality, keep_binaries 
             seq_results[k] = v.item()
     
     print("SEQUENTIAL RESULTS: ",seq_results)
-    return seq_results
+    return seq_results, num_pixels
 
 
 def run_inference_scalable(
@@ -131,21 +179,22 @@ def run_inference_scalable(
     outputdir: Path,
     mask_pol: str,
     list_pr: list = [0,1,2,3,4,5,6,7,8,9,10],
+    entropy_estimation = False,
     force: bool = False,
     trained_net: str = "",
     description: str = "",
-    write_results = False,
     **args: Any,
 ) -> Dict[str, Any]:
     
 
     results_across_quality = {}
 
+
+
     for q in list_pr:
         results_paths = []
         for filepath in filepaths:
             print("filepath: ",filepath)
-
             output_subdir = Path(outputdir) / Path(filepath).parent.relative_to(inputdir)
             output_subdir.mkdir(parents=True, exist_ok=True)
             sequence_metrics_path = output_subdir / f"{filepath.stem}-{trained_net}.json"
@@ -159,12 +208,15 @@ def run_inference_scalable(
             with amp.autocast(enabled=args["half"]):
                 with torch.no_grad():
                     sequence_bin = sequence_metrics_path.with_suffix(".bin")
-                    metrics = eval_model_scalable(net, 
-                                                  filepath, 
-                                                  sequence_bin,
-                                                  mask_pol,
-                                                  q, 
-                                                  args["keep_binaries"])
+                    if entropy_estimation is False:
+                        metrics, num_pixels = eval_model_scalable(net, 
+                                                    filepath, 
+                                                    sequence_bin,
+                                                    mask_pol,
+                                                    q, 
+                                                    args["keep_binaries"])
+                    else:
+                        metrics = eval_model_entropy_estimation_scalable(net, filepath, mask_pol,q)
             with sequence_metrics_path.open("wb") as f:
                 output = {
                     "source": filepath.stem,
@@ -175,4 +227,4 @@ def run_inference_scalable(
                 f.write(json.dumps(output, indent=2).encode())
         results = aggregate_results(results_paths)
         results_across_quality[str(q)] = results
-    return results_across_quality
+    return results_across_quality, num_pixels
