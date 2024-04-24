@@ -42,6 +42,30 @@ def conv1x1(in_ch: int, out_ch: int, stride: int = 1) -> nn.Module:
     """1x1 convolution."""
     return nn.Conv2d(in_ch, out_ch, kernel_size=1, stride=stride)
 
+
+class ResidualUnit(nn.Module):
+
+    def __init__(self,N):
+        super().__init__()
+        self.conv = nn.Sequential(
+                conv1x1(N, N // 2),
+                nn.GELU(),
+                conv3x3(N // 2, N // 2),
+                nn.GELU(),
+                conv1x1(N // 2, N),
+            )
+        self.relu = nn.GELU()
+
+    def forward(self, x):
+        identity = x
+        out = self.conv(x)
+        out += identity
+        out = self.relu(out)
+        return out
+
+
+
+
 class Win_noShift_Attention(nn.Module):
     """Window-based self-attention module."""
 
@@ -49,34 +73,14 @@ class Win_noShift_Attention(nn.Module):
         super().__init__()
         N = dim
 
-        class ResidualUnit(nn.Module):
-            """Simple residual unit."""
 
-            def __init__(self):
-                super().__init__()
-                self.conv = nn.Sequential(
-                    conv1x1(N, N // 2),
-                    nn.GELU(),
-                    conv3x3(N // 2, N // 2),
-                    nn.GELU(),
-                    conv1x1(N // 2, N),
-                )
-                self.relu = nn.GELU()
-
-            def forward(self, x):
-                identity = x
-                out = self.conv(x)
-                out += identity
-                out = self.relu(out)
-                return out
-
-        self.conv_a = nn.Sequential(ResidualUnit(), ResidualUnit(), ResidualUnit())
+        self.conv_a = nn.Sequential(ResidualUnit(N), ResidualUnit(N), ResidualUnit(N))
 
         self.conv_b = nn.Sequential(
             WinBasedAttention(dim=dim, num_heads=num_heads, window_size=window_size, shift_size=shift_size),
-            ResidualUnit(),
-            ResidualUnit(),
-            ResidualUnit(),
+            ResidualUnit(N),
+            ResidualUnit(N),
+            ResidualUnit(N),
             conv1x1(N, N),
         )
 
