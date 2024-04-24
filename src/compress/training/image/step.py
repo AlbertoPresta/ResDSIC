@@ -406,7 +406,6 @@ def compress_with_ac(model,
                             if cheating is False:
                                 bpp = bpp_hype + bpp_scale + bpp_prog 
                             else:
-                                print("sto imbrogliando! ",bpp_hype)
                                 bpp = bpp_scale + bpp_prog 
                         else:
                             if cheating is False:
@@ -415,7 +414,6 @@ def compress_with_ac(model,
                                 if j == 0:
                                     bpp = bpp_hype + bpp_scale
                                 else:
-                                    print("sto imbrogliando!!!: ",bpp_hype)#ddd
                                     bpp = bpp_scale
 
 

@@ -1023,12 +1023,19 @@ class PostProcessedNetwork(nn.Module):
 
         
 
-    def forward(self, x, mask_pol = "point-based-std", quality = None):
+    def forward(self, x, mask_pol = "point-based-std", quality = None, post = True, training  = True):
 
 
         quality = self.starting_quality if quality is None else quality 
     
-        x_base = self.base_net.forward_single_quality(x, quality, mask_pol)
+        x_base = self.base_net.forward_single_quality(x, quality = quality, 
+                                                      mask_pol = mask_pol, 
+                                                      training =  training)
+
+        if post is False:
+            return x_base 
+        
+
         x_enh = self.post_net(x_base["x_hat"]) 
         print("shape: ",x_enh.shape)
         if self.residual:
