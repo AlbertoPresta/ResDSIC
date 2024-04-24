@@ -21,7 +21,7 @@ from .scalable.independent_entropy import ResWACNNIndependentEntropy
 from .scalable.conditional_independent import ResWACNNConditionalIndependentEntropy
 from .scalable.progressive import ProgressiveWACNN,ProgressiveMaskedWACNN
 from .scalable.progressive_res import ProgressiveResWACNN
-from .scalable.CHP_res import ChannelProgresssiveWACNN
+from .scalable.CHP_res import ChannelProgresssiveWACNN, PostProcessedNetwork
 from .scalable.progressive_enc import ProgressiveEncWACNN
 from .tcm.scalable import ResTCM
 from .scalable.utils import initialize_model_from_pretrained
@@ -42,7 +42,8 @@ models = {
     "progressive_mask": ProgressiveMaskedWACNN,
     "progressive_res":ProgressiveResWACNN,
     "channel":ChannelProgresssiveWACNN,
-    "progressive_enc":ProgressiveEncWACNN
+    "progressive_enc":ProgressiveEncWACNN,
+    "post":PostProcessedNetwork
 }
 
 
