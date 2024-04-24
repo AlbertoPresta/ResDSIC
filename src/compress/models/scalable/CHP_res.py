@@ -41,6 +41,7 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
                 joiner_policy = "res",
                 support_progressive_slices = 0,
                 delta_encode = False,
+                residual_before_lrp = False,
                 double_dim = False,
                 **kwargs):
         
@@ -64,6 +65,7 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
         assert self.shared_entropy_estimation is False 
         self.multiple_hyperprior = multiple_hyperprior
         self.delta_encode = delta_encode
+        self.residual_before_lrp = residual_before_lrp
 
 
 
@@ -535,14 +537,17 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
                                                                   training = training)
                 y_hat_slice = ste_round(y_slice - mu)*block_mask + mu
 
+                if self.residual_before_lrp: # se è prima, faccio il merging qua!!!
+                    y_hat_slice = self.merge(y_hat_slice,y_hat_slices_base[current_index],current_index)
+
 
                 lrp_support = torch.cat([mean_support,y_hat_slice], dim=1)
                 lrp = self.lrp_transforms_prog[current_index](lrp_support)
                 lrp = 0.5 * torch.tanh(lrp)
                 y_hat_slice += lrp   
 
-                # faccio il merge qua!!!!!
-                y_hat_slice = self.merge(y_hat_slice,y_hat_slices_base[current_index],current_index)
+                if self.residual_before_lrp is False:
+                    y_hat_slice = self.merge(y_hat_slice,y_hat_slices_base[current_index],current_index)
  
                 y_hat_slices_quality.append(y_hat_slice)
                 #y_hat_slices_only_quality.append(y_hat_slice)
@@ -703,6 +708,9 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
             y_hat_slice = self.gaussian_conditional.decompress(y_q_string, index)
             y_hat_slice = y_hat_slice + mu
 
+            if self.residual_before_lrp: # se è prima, faccio il merging qua!!!
+                y_hat_slice = self.merge(y_hat_slice,y_hat_slices[current_index],current_index)
+
             
 
             lrp_support = torch.cat([mean_support,y_hat_slice], dim=1)
@@ -710,7 +718,8 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
             lrp = 0.5 * torch.tanh(lrp)
             y_hat_slice += lrp
 
-            y_hat_slice = self.merge(y_hat_slice,y_hat_slices[current_index],current_index)
+            if self.residual_before_lrp is False:
+                y_hat_slice = self.merge(y_hat_slice,y_hat_slices[current_index],current_index)
 
             y_hat_slices_quality.append(y_hat_slice)
 
@@ -810,12 +819,18 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
             rv = rv.reshape(mu.shape)
             y_hat_slice = self.gaussian_conditional.dequantize(rv, mu)
 
+            if self.residual_before_lrp:
+                y_hat_slice = self.merge(y_hat_slice,y_hat_slices[current_index],current_index)
+
             lrp_support = torch.cat([mean_support, y_hat_slice], dim=1)
             lrp = self.lrp_transforms_prog[current_index](lrp_support)
             lrp = 0.5 * torch.tanh(lrp)
             y_hat_slice += lrp
 
-            y_hat_slice = self.merge(y_hat_slice,y_hat_slices[current_index],current_index)
+            
+            if self.residual_before_lrp is False:
+                y_hat_slice = self.merge(y_hat_slice,y_hat_slices[current_index],current_index)
+
             y_hat_slices_quality.append(y_hat_slice)
 
 
@@ -947,13 +962,18 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
 
             y_likelihood_quality.append(y_slice_likelihood)
 
+            if self.residual_before_lrp:
+                y_hat_slice = self.merge(y_hat_slice,y_hat_slices[current_index],current_index)
+
+
             lrp_support = torch.cat([mean_support,y_hat_slice], dim=1)
             lrp = self.lrp_transforms_prog[current_index](lrp_support)
             lrp = 0.5 * torch.tanh(lrp)
             y_hat_slice += lrp   
 
             # faccio il merge qua!!!!!
-            y_hat_slice = self.merge(y_hat_slice,y_hat_slices[current_index],current_index)   #ddd
+            if self.residual_before_lrp is False:
+                y_hat_slice = self.merge(y_hat_slice,y_hat_slices[current_index],current_index)   #ddd
 
             y_hat_slices_quality.append(y_hat_slice)    
 

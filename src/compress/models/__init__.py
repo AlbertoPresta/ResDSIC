@@ -111,6 +111,7 @@ def get_model(args,device, lmbda_list):
                                 double_dim = args.double_dim,
                                 shared_entropy_estimation = False,
                                 delta_encode = args.delta_encode,
+                                residual_before_lrp = args.residual_before_lrp
                         )  
     elif args.model == "progressive_res":
         net = models[args.model]( N = args.N,

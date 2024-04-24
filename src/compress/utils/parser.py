@@ -122,6 +122,7 @@ def parse_args(argv):
 
     parser.add_argument("--kd_base", action="store_true", help="KD base")
     parser.add_argument("--freeze_base", action="store_true", help="KD base")#dddd
+    parser.add_argument("--residual_before_lrp", action="store_true", help="KD base")
 
 
     parser.add_argument("--num_images", type=int, default=300000, help="num images") #ddddddd
