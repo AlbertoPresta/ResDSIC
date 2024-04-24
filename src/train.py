@@ -16,6 +16,7 @@ from compress.training.image.loss import ScalableRateDistortionLoss, ScalableMut
 from compress.datasets.utils import ImageFolder, TestKodakDataset
 from compress.models import get_model, initialize_model_from_pretrained
 #from compress.zoo import models
+from compress.result_list import tri_planet_22_bpp, tri_planet_22_psnr, tri_planet_23_bpp, tri_planet_23_psnr
 import os
 
 def sec_to_hours(seconds):
@@ -89,9 +90,23 @@ def main(argv):
     args = parse_args(argv)
     print(args)
 
+    if args.cluster == "hssh":
 
-    dict_base_model = {"q2":"/scratch/base_devil/weights/q2/model.pth",
-                       "q5":"/scratch/base_devil/weights/q5/model.pth"}
+        openimages_path = "/scratch/dataset/openimages"
+        kodak_path = "/scratch/dataset/kodak"
+        save_path = "/scratch/ResDSIC/models/"
+
+        dict_base_model = {"q2":"/scratch/base_devil/weights/q2/model.pth",
+                        "q5":"/scratch/base_devil/weights/q5/model.pth"}
+    elif args.cluster == "nautilus":
+
+        openimages_path = "/data/openimages"
+        kodak_path = "/data/kodak"
+        save_path = "/data/models"
+
+        dict_base_model = {"q2":"/data/zou22/q2/model.pth",
+                        "q5":"/data/zou22/q5/model.pth"}
+
 
     
     if  args.model == "restcm": 
@@ -117,9 +132,9 @@ def main(argv):
         [ transforms.ToTensor()]
     )
 
-    train_dataset = ImageFolder(args.dataset, split="train", transform=train_transforms, num_images=args.num_images)
-    valid_dataset = ImageFolder(args.dataset, split="test", transform=train_transforms, num_images=args.num_images_val)
-    test_dataset = TestKodakDataset(data_dir="/scratch/dataset/kodak", transform= test_transforms)
+    train_dataset = ImageFolder(openimages_path, split="train", transform=train_transforms, num_images=args.num_images)
+    valid_dataset = ImageFolder(openimages_path, split="test", transform=train_transforms, num_images=args.num_images_val)
+    test_dataset = TestKodakDataset(data_dir=kodak_path, transform= test_transforms)
 
     filelist = test_dataset.image_path
 
@@ -270,9 +285,6 @@ def main(argv):
             print(f'Current patience level: {lr_scheduler.patience - lr_scheduler.num_bad_epochs}')
         
 
-        
-        
-        
         if epoch_enc > 5 and args.mask_policy not in ("learnable-mask-nested"):
             list_pr = [0,0.2,0.5,0.7,1]
             mask_pol = "point-based-std" 
@@ -354,12 +366,20 @@ def main(argv):
                     psnr_res["base"] = [29.99, 30.57, 32.42, 34.18, 36.01, 37.96]
                     bpp_res["base"] =  [0.161, 0.198, 0.306, 0.455, 0.628, 0.899]                                   
 
+            bpp_res["tri_planet_23"] = tri_planet_23_bpp
+            psnr_res["tri_planet_23"] = tri_planet_23_psnr
+
+            bpp_res["tri_planet_22"] = tri_planet_22_bpp
+            psnr_res["tri_planet_22"] = tri_planet_22_psnr
+
             plot_rate_distorsion(bpp_res, psnr_res,epoch_enc, eest="compression")
             
             bpp_res["our"] = bpp_t
             psnr_res["our"] = psnr_t          
             
-            
+
+
+
             plot_rate_distorsion(bpp_res, psnr_res,epoch_enc, eest="model")
             epoch_enc += 1
 
@@ -373,7 +393,7 @@ def main(argv):
         name_folder = args.code + "_" + stringa_lambda + "_"
         
         
-        cartella = os.path.join(args.save_path,name_folder) #dddd
+        cartella = os.path.join(save_path,name_folder) #dddd
 
 
         if not os.path.exists(cartella):

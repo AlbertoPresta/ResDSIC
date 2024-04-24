@@ -103,9 +103,11 @@ def parse_args_video(argv):
 
 def parse_args(argv):
     parser = argparse.ArgumentParser(description="Example training script.") #dddd
-    parser.add_argument("-m","--model",default="restcm",choices=models.keys(),help="Model architecture (default: %(default)s)",)
-    parser.add_argument("-d", "--dataset", type=str, default = "/scratch/dataset/openimages", help="Training dataset")
-    parser.add_argument("-e","--epochs",default=140,type=int,help="Number of epochs (default: %(default)s)",)
+
+    parser.add_argument("-cl", "--cluster", type=str, default = "hssh",choices=["hssh","nautilus"], help="Training dataset")
+    parser.add_argument("-m","--model",default="channel",choices=models.keys(),help="Model architecture (default: %(default)s)",)
+    
+    parser.add_argument("-e","--epochs",default=150,type=int,help="Number of epochs (default: %(default)s)",)
     parser.add_argument( "-lr", "--learning-rate", default=1e-4, type=float, help="Learning rate (default: %(default)s)",)
     parser.add_argument("-n","--num-workers",type=int,default=8,help="Dataloaders threads (default: %(default)s)",)
     #dddd
@@ -114,7 +116,7 @@ def parse_args(argv):
     parser.add_argument("--division_dimension", nargs='+', type=int, default = [320, 640])
     parser.add_argument("--inner_dimensions", nargs='+', type=int, default = [192, 192]) #ddddfffff
     parser.add_argument("--list_quality", nargs='+', type=int, default = [0])
-    parser.add_argument( "--batch_size", type=int, default=8, help="batch_size")
+    parser.add_argument( "--batch_size", type=int, default=16, help="batch_size")
     parser.add_argument( "--dim_chunk", type=int, default=32, help="dim chunk")
 
 
@@ -124,7 +126,7 @@ def parse_args(argv):
 
     parser.add_argument("--num_images", type=int, default=300000, help="num images") #ddddddd
 
-    parser.add_argument("--N", type=int, default=128, help="N")#ddddd#ddd
+    parser.add_argument("--N", type=int, default=192, help="N")#ddddd#ddd
     parser.add_argument("--M", type=int, default=640, help="M")
     parser.add_argument("--patience", type=int, default=6, help="patience")#ddddddd
 
@@ -149,7 +151,7 @@ def parse_args(argv):
 
     parser.add_argument("-see","--shared_entropy_estimation", action="store_true", help="Use cuda")
     parser.add_argument("--continue_training", action="store_true", help="continue training of the checkpoint")
-    parser.add_argument("--save_path", type=str, default="/scratch/ResDSIC/models/", help="Where to Save model")
+
     parser.add_argument("--seed", type=float, help="Set random seed for reproducibility")
     parser.add_argument("--sampling_training", action="store_true", help="Save model to disk")
     parser.add_argument("--joiner_policy", type=str, default = "res",help="Path to a checkpoint") 
