@@ -361,7 +361,7 @@ def save_checkpoint(state, is_best, last_pth,very_best):
 
 
 def main(argv):
-    args = parse_args_post(argv) #DA AGGIUNGERE!!!!!!!!!!!!!!!!
+    args = parse_args_post(argv) 
     wandb.init( config= args, project="ResDSIC-post", entity="albipresta")
     if args.seed is not None:
         torch.manual_seed(args.seed)
@@ -373,20 +373,19 @@ def main(argv):
         openimages_path = "/scratch/dataset/openimages"
         kodak_path = "/scratch/dataset/kodak"
         save_path = "/scratch/ResDSIC/models/"
-
-
+        path =  "/scratch/ResDSIC/models/" 
     elif args.cluster == "nautilus":
 
         openimages_path = "/data/openimages"
         kodak_path = "/data/kodak"
         save_path = "/data/models"
-
+        path =  0000
 
 
 
     print(args)
     device = "cuda" #if args.cuda and torch.cuda.is_available() else "cpu"
-    total_path = args.path + args.checkpoint_base[0] + args.model_base
+    total_path = path + args.checkpoint_base[0] + args.model_base
     print("Loading", total_path)
     checkpoint = torch.load(total_path, map_location=device)
     new_args = checkpoint["args"]
@@ -590,7 +589,8 @@ def main(argv):
                     "optimizer": optimizer.state_dict(),
                     "lr_scheduler": lr_scheduler.state_dict(),
                     "aux_optimizer": "None",
-                    "args":args
+                    "args":args,
+
       
                 },
                 is_best,
