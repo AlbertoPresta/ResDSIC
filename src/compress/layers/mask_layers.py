@@ -47,6 +47,8 @@ class Mask(nn.Module):
         shapes = scale.shape
         bs, ch, w,h = shapes
 
+        res = torch.zeros_like(scale).to(scale.device)
+
 
         if mask_pol == "point-based-std":
             if pr == 10:# self.scalable_levels - 1:
@@ -57,15 +59,13 @@ class Mask(nn.Module):
 
             assert scale is not None 
 
+            
             pr = pr*0.1
             pr_bis = 1.0 - pr
-            scale = scale.ravel()
-            quantile = torch.quantile(scale, pr_bis) #dddd
-            res = scale >= quantile 
+            scale = scale.reshape(bs,-1).to(scale.device) 
+            quantiles = torch.quantile(input_flatten, q=pr_bis, dim=(1))
+            res = torch.where(scale < quantiles.view(-1, 1),torch.tensor(0.0), input_flatten).to(scale.device)
             res = res.float()
-
-            #print("original pr: ",pr,"distribution---> ",torch.unique(res,return_counts = True))
-            #print("dovrebbero essere soli 1: ",torch.unique(res, return_counts = True))
             return res.reshape(bs,ch,w,h).to(torch.float)
         elif mask_pol == "learnable-mask-gamma":
             
