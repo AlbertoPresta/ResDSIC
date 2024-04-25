@@ -13,7 +13,8 @@ import numpy as np
 import os
 from compress.result_list import *
 import torch.nn.functional as F 
-from compressai.ops import compute_padding, ste_round
+from compressai.ops import compute_padding
+from compress.ops import ste_round
 from compress.utils.functions import AverageMeter, read_image
 from compress.models import ChannelProgresssiveWACNN, WACNN, initialize_model_from_pretrained
 import seaborn as sns
@@ -94,18 +95,22 @@ def analyze_latent_space(net,  filelist, device, quality ,mask_pol, nome_cartell
         y_hat_slice = ste_round(y_slice - mu) + mu
 
         # METTERE QUA
+
         cartella_blocco = os.path.join(nome_cartella,"blocks","block_" + str(slice_index),"like_base")
-        os.makedirs(cartella_blocco) if  os.path.exists(cartella_blocco) else print("ciao")
-        save_image(y_slice_likelihood,os.path.join(cartella_blocco,"ch_" + str(slice_index) + ".png")) 
+        os.makedirs(cartella_blocco, exist_ok = True)
+        for jj in range(32):
+            save_image(y_slice_likelihood[0,jj,:,:],os.path.join(cartella_blocco,"ch_" + str(jj) + ".png")) 
 
 
         cartella_blocco = os.path.join(nome_cartella,"blocks","block_" + str(slice_index),"std_base")
-        os.makedirs(cartella_blocco) if  os.path.exists(cartella_blocco) else print("ciao")
-        save_image(scale,os.path.join(cartella_blocco,"ch_" + str(slice_index) + ".png")) 
+        os.makedirs(cartella_blocco, exist_ok = True)
+        for jj in range(32):
+            save_image(scale[0,jj,:,:],os.path.join(cartella_blocco,"ch_" + str(jj) + ".png")) 
 
         cartella_blocco = os.path.join(nome_cartella,"blocks","block_" + str(slice_index),"mu_base")
-        os.makedirs(cartella_blocco) if  os.path.exists(cartella_blocco) else print("ciao")
-        save_image(mu,os.path.join(cartella_blocco,"ch_" + str(slice_index) + ".png")) 
+        os.makedirs(cartella_blocco, exist_ok = True) 
+        for jj in range(32):
+            save_image(mu[0,jj,:,:],os.path.join(cartella_blocco,"ch_" + str(jj) + ".png")) 
 
 
         lrp_support = torch.cat([mean_support,y_hat_slice], dim=1)
@@ -113,9 +118,12 @@ def analyze_latent_space(net,  filelist, device, quality ,mask_pol, nome_cartell
         lrp = 0.5 * torch.tanh(lrp)
         y_hat_slice += lrp  
 
-        cartella_blocco = os.path.join(nome_cartella,"blocks","block_" + str(current_index),"base")
-        os.makedirs(cartella_blocco) if  os.path.exists(cartella_blocco) else print("ciao")
-        save_image(y_hat_slice,os.path.join(cartella_blocco,"ch_" + str(current_index) + ".png"))              
+        y_hat_slices.append(y_hat_slice)
+
+        cartella_blocco = os.path.join(nome_cartella,"blocks","block_" + str(slice_index),"base")
+        os.makedirs(cartella_blocco, exist_ok = True) 
+        for jj in range(32):
+            save_image(y_hat_slice[0,jj,:,:],os.path.join(cartella_blocco,"ch_" + str(jj) + ".png"))              
     if quality == 0: #and  slice_index == self.num_slice_cumulative_list[0] - 
         return 0
             
@@ -139,8 +147,8 @@ def analyze_latent_space(net,  filelist, device, quality ,mask_pol, nome_cartell
 
             
         support_slices = net.determine_support(y_hat_slices,
-                                                    current_index,
-                                                    y_hat_slices_quality) 
+                                                current_index,
+                                                y_hat_slices_quality) 
             
         mean_support = torch.cat([latent_means[:,net.division_dimension[0]:]] + support_slices, dim=1)
         scale_support = torch.cat([latent_scales[:,net.division_dimension[0]:]] + support_slices, dim=1)  
@@ -178,17 +186,20 @@ def analyze_latent_space(net,  filelist, device, quality ,mask_pol, nome_cartell
 
         # METTERE QUA
         cartella_blocco = os.path.join(nome_cartella,"blocks","block_" + str(current_index),"like_" + str(quality))
-        os.makedirs(cartella_blocco) if  os.path.exists(cartella_blocco) else print("ciao")
-        save_image(y_slice_likelihood,os.path.join(cartella_blocco,"ch_" + str(current_index) + ".png")) 
+        os.makedirs(cartella_blocco, exist_ok = True) 
+        for jj in range(32):
+            save_image(y_slice_likelihood[0,jj,:,:],os.path.join(cartella_blocco,"ch_" + str(jj) + ".png")) 
 
 
         cartella_blocco = os.path.join(nome_cartella,"blocks","block_" + str(current_index),"std_"+ str(quality))
-        os.makedirs(cartella_blocco) if  os.path.exists(cartella_blocco) else print("ciao")
-        save_image(scale,os.path.join(cartella_blocco,"ch_" + str(current_index) + ".png")) 
+        os.makedirs(cartella_blocco, exist_ok = True) 
+        for jj in range(32):
+            save_image(scale[0,jj,:,:],os.path.join(cartella_blocco,"ch_" + str(jj) + ".png")) 
 
         cartella_blocco = os.path.join(nome_cartella,"blocks","block_" + str(current_index),"mu_"+ str(quality))
-        os.makedirs(cartella_blocco) if  os.path.exists(cartella_blocco) else print("ciao")
-        save_image(mu,os.path.join(cartella_blocco,"ch_" + str(current_index) + ".png")) 
+        os.makedirs(cartella_blocco, exist_ok = True) 
+        for jj in range(32):
+            save_image(mu[0,jj,:,:],os.path.join(cartella_blocco,"ch_" + str(jj) + ".png")) 
 
         if net.residual_before_lrp:
             y_hat_slice = net.merge(y_hat_slice,y_hat_slices[current_index],current_index)
@@ -201,8 +212,9 @@ def analyze_latent_space(net,  filelist, device, quality ,mask_pol, nome_cartell
 
         # METTERE QUA
         cartella_blocco = os.path.join(nome_cartella,"blocks","block_" + str(current_index),"enh_"+str(quality))
-        os.makedirs(cartella_blocco) if  os.path.exists(cartella_blocco) else print("ciao")
-        save_image(y_hat_slice,os.path.join(cartella_blocco,"ch_" + str(current_index) + ".png")) 
+        os.makedirs(cartella_blocco, exist_ok = True)
+        for jj in range(32):
+            save_image(y_hat_slice[0,jj,:,:],os.path.join(cartella_blocco,"ch_" + str(jj) + ".png")) 
 
         # faccio il merge qua!!!!!
         if net.residual_before_lrp is False:
@@ -212,8 +224,9 @@ def analyze_latent_space(net,  filelist, device, quality ,mask_pol, nome_cartell
 
         # METTERE QUA
         cartella_blocco = os.path.join(nome_cartella,"blocks","block_" + str(current_index),"sum_"+str(quality))
-        os.makedirs(cartella_blocco) if  os.path.exists(cartella_blocco) else print("ciao")
-        save_image(y_hat_slice,os.path.join(cartella_blocco,"ch_" + str(current_index) + ".png")) 
+        os.makedirs(cartella_blocco, exist_ok = True) 
+        for jj in range(32):
+            save_image(y_hat_slice[0,jj,:,:],os.path.join(cartella_blocco,"ch_" + str(jj) + ".png")) 
     return 0
 
 
@@ -229,12 +242,13 @@ def main(argv):
     elif args.cluster == "nautilus":
         kodak_path = "/data/kodak"
         save_path = "/data/latents"
+        path = "/data/pretrained/" 
     elif args.cluster == "ucsd":
         kodak_path = "/data/alberto/kodak"
         save_path = "/data/alberto/latents"
         path = "/data/alberto/resDSIC/"        
     print(args)
-    device = "cuda" #if args.cuda and torch.cuda.is_available() else "cpu"
+    device = "cpu" #if args.cuda and torch.cuda.is_available() else "cpu"
     total_path = path + args.checkpoint[0] + args.model
     print("Loading", total_path)
     checkpoint = torch.load(total_path, map_location=device)
@@ -246,8 +260,10 @@ def main(argv):
         new_args.multiple_hyperprior = False
     if "double_dim" not in new_args:
         new_args.double_dim = False
-
-
+    if "delta_encode" not in new_args:
+        new_args.delta_encode = False
+    if "residual_before_lrp" not in new_args:
+        new_args.residual_before_lrp = False
 
     lmbda_list = new_args.lmbda_list
     #wandb.init( config= args, project="EVAL", entity="albipresta")  #dddd 
@@ -279,11 +295,12 @@ def main(argv):
 
     net.print_information()
     mask_pol = "point-based-std"
-    qualities = [0,1,10]
+    qualities = [1,10]
 
     
     for i,kod in enumerate(filelist):
-        nome_cartella = os.path.join(save_path,kod)
+        print("------------------------------------KOD: ",kod)
+        nome_cartella = os.path.join(save_path,kod.split("/")[-1].split(".")[0])
         os.makedirs(nome_cartella) if not nome_cartella else print("cartella già esistente")
         os.makedirs(os.path.join(nome_cartella,"rec")) if not os.path.join(nome_cartella,"rec")\
                                                          else print("cartella già esistente")
@@ -291,6 +308,7 @@ def main(argv):
         os.makedirs(os.path.join(nome_cartella,"blocks")) if not os.path.join(nome_cartella,"rec")\
                                                          else print("cartella già esistente")
         for q in qualities:
+           print("--> quality: ",q)
            c = analyze_latent_space(net, kod, device, q, mask_pol, nome_cartella)
 
 
