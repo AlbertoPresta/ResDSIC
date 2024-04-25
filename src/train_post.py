@@ -163,7 +163,6 @@ def valid_epoch(epoch, test_dataloader,criterion, model, pr_list = [0.05], mask_
                 denominator = -math.log(2) * num_pixels
                 likelihoods = out_net["likelihoods"]
                 bpp = (torch.log(likelihoods["y"]).sum() + torch.log(likelihoods["z"]).sum())/denominator
-
                     
                 bpp_loss.update(bpp)
 
@@ -173,7 +172,6 @@ def valid_epoch(epoch, test_dataloader,criterion, model, pr_list = [0.05], mask_
                 out_criterion = criterion(out_net, d, lmbda = p) #dddddd
 
                 loss.update(out_criterion["loss"].clone().detach())
-
                            
     log_dict = {
             "valid":epoch, "valid/loss": loss.avg, 
@@ -379,13 +377,13 @@ def main(argv):
         openimages_path = "/data/openimages"
         kodak_path = "/data/kodak"
         save_path = "/data/models"
-        path =  0000
+        path =  "/data/pretrained/"
 
 
 
     print(args)
     device = "cuda" #if args.cuda and torch.cuda.is_available() else "cpu"
-    total_path = path + args.checkpoint_base[0] + args.model_base
+    total_path = path + args.checkpoint_base + args.model_base
     print("Loading", total_path)
     checkpoint = torch.load(total_path, map_location=device)
     new_args = checkpoint["args"]
@@ -412,10 +410,12 @@ def main(argv):
     base_net = base_net.to(device)
     base_net.update() 
 
-    net = models["post"](base_net,N = args.post_N,M = args.Post_M)
+    net = models["post"](base_net,
+                        N = args.post_N,
+                        M = args.post_M)
     net = net.to(device)
 
-    print("initialize dataset")
+    print("MODELLO INIZIALIZZATO! initialize dataset")
     
     train_transforms = transforms.Compose([transforms.RandomCrop(args.patch_size), transforms.ToTensor()])
     test_transforms = transforms.Compose([ transforms.ToTensor()])
@@ -433,7 +433,6 @@ def main(argv):
 
     filelist = test_dataset.image_path
 
-    
 
     train_dataloader = DataLoader(
         train_dataset,
@@ -458,15 +457,15 @@ def main(argv):
                                 pin_memory=(device == "cuda"),)
 
 
-    if args.cuda and torch.cuda.device_count() > 1:
+    if torch.cuda.device_count() > 1:
         net = CustomDataParallel(net)
 
     last_epoch = 0
     optimizer = configure_optimizers(net, args)
-    lr_scheduler = optim.lr_scheduler.MultiStepLR(optimizer, [40,45], gamma=0.1, last_epoch=-1) 
+    lr_scheduler = optim.lr_scheduler.MultiStepLR(optimizer, [50,70], gamma=0.1, last_epoch=-1) 
 
 
-    criterion = DistortionLoss() #DA IMPLEMENTARE!!!!!!!!!!!!!
+    criterion = DistortionLoss() 
     best_loss = float("inf")
     counter = 0
     epoch_enc = 0
@@ -476,7 +475,7 @@ def main(argv):
         print("******************************************************")
         print("epoch: ",epoch)
         start = time.time()
-        #print(f"Learning rate: {optimizer.param_groups[0]['lr']}")
+
         num_tainable = net.print_information()
         
         if num_tainable > 0:
@@ -547,8 +546,8 @@ def main(argv):
         bpp_res["our_f"] = bpp_f
         psnr_res["our_f"] = psnr_f
 
-        psnr_res["base"] =   [29.20, 30.59,32.26,34.15,35.91,37.72]
-        bpp_res["base"] =  [0.127,0.199,0.309,0.449,0.649,0.895]
+        #psnr_res["base"] =   [29.20, 30.59,32.26,34.15,35.91,37.72]
+        #bpp_res["base"] =  [0.127,0.199,0.309,0.449,0.649,0.895]
 
         bpp_res["tri_planet_23"] = tri_planet_23_bpp
         psnr_res["tri_planet_23"] = tri_planet_23_psnr
@@ -578,8 +577,6 @@ def main(argv):
 
         last_pth, very_best =  create_savepath( cartella)
 
-
-
         #if is_best is True or epoch%10==0 or epoch > 98: #args.save:
         save_checkpoint(
                 {
@@ -590,7 +587,6 @@ def main(argv):
                     "lr_scheduler": lr_scheduler.state_dict(),
                     "aux_optimizer": "None",
                     "args":args,
-
       
                 },
                 is_best,

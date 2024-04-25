@@ -1037,7 +1037,7 @@ class PostProcessedNetwork(nn.Module):
         
 
         x_enh = self.post_net(x_base["x_hat"]) 
-        print("shape: ",x_enh.shape)
+
         if self.residual:
             x_base["x_hat"] = x_base["x_hat"] + x_enh
         else:
@@ -1077,13 +1077,5 @@ if __name__ == "__main__":
 
     d = post_net(c) 
     print("lo shape di d è: ",d) 
-
-
-
-    
-
-
-
-
 
 
