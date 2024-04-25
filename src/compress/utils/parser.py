@@ -6,7 +6,9 @@ from compress.models import models, video_models
 def parse_args_eval(argv):
     parser = argparse.ArgumentParser(description="Example training script.") #dddddddd
     parser.add_argument("--path",type=str,default = "/scratch/ResDSIC/models/")
+    parser.add_argument("--cluster",type=str,default = "ucsd")
     parser.add_argument("--model",type=str,default = "/_very_best.pth.tar")
+
     parser.add_argument("--mask_policy",type=str,default = "point-based-std")
     parser.add_argument("--cheating", action="store_true", help="Use cuda")
     parser.add_argument("--checkpoint",  nargs='+', type=str, default = ["res_m4_005_05_encdec",

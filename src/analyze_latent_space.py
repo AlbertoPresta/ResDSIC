@@ -225,16 +225,17 @@ def main(argv):
 
         kodak_path = "/scratch/dataset/kodak"
         save_path = "/scratch/ResDSIC/models/"
-        path =  "/scratch/ResDSIC/models/" 
+
     elif args.cluster == "nautilus":
-
-
         kodak_path = "/data/kodak"
         save_path = "/data/latents"
-        path =  0000
+    elif args.cluster == "ucsd":
+        kodak_path = "/data/alberto/kodak"
+        save_path = "/data/alberto/latents"
+        path = "/data/alberto/resDSIC/"        
     print(args)
     device = "cuda" #if args.cuda and torch.cuda.is_available() else "cpu"
-    total_path = args.path + args.checkpoint[0] + args.model
+    total_path = path + args.checkpoint[0] + args.model
     print("Loading", total_path)
     checkpoint = torch.load(total_path, map_location=device)
     new_args = checkpoint["args"]
@@ -249,7 +250,7 @@ def main(argv):
 
 
     lmbda_list = new_args.lmbda_list
-    wandb.init( config= args, project="EVAL", entity="albipresta")  #dddd 
+    #wandb.init( config= args, project="EVAL", entity="albipresta")  #dddd 
 
     if new_args.seed is not None:
         torch.manual_seed(new_args.seed)
@@ -290,8 +291,8 @@ def main(argv):
         os.makedirs(os.path.join(nome_cartella,"blocks")) if not os.path.join(nome_cartella,"rec")\
                                                          else print("cartella già esistente")
         for q in qualities:
-
            c = analyze_latent_space(net, kod, device, q, mask_pol, nome_cartella)
+
 
 
 
