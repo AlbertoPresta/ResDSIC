@@ -992,6 +992,7 @@ class PostProcessedNetwork(nn.Module):
                 N = 64,
                 M = 128,
                 residual = True,
+                post = True,
                 starting_quality = 1, # 10 %
                     ):
         super().__init__()
@@ -999,7 +1000,10 @@ class PostProcessedNetwork(nn.Module):
         self.M = M
         self.base_net = base_net
         assert isinstance(self.base_net, ChannelProgresssiveWACNN)
-        self.post_net = PostNet(N = self.N, M = self.M) 
+        self.post = post 
+        if self.post:
+            self.post_net = PostNet(N = self.N, M = self.M) 
+
         self.residual = residual
         self.starting_quality = starting_quality
 
@@ -1010,25 +1014,88 @@ class PostProcessedNetwork(nn.Module):
 
     def print_information(self):
         print("base net",sum(p.numel() for p in self.base_net.parameters()))
-        print("post net",sum(p.numel() for p in self.post_net.parameters())) 
-        return  sum(p.numel() for p in self.post_net.parameters() if p.requires_grad is True)\
-              + sum(p.numel() for p in self.base_net.parameters() if p.requires_grad is True)
+        if self.post:
+            print("post net",sum(p.numel() for p in self.post_net.parameters())) 
+            return  sum(p.numel() for p in self.post_net.parameters() if p.requires_grad is True)\
+                + sum(p.numel() for p in self.base_net.parameters() if p.requires_grad is True)
+        else:
+            return sum(p.numel() for p in self.base_net.parameters() if p.requires_grad is True)
+
 
 
     def freeze(self):
         for p in self.base_net.parameters():
             p.requires_grad = False
-        for p in self.post_net.parameters():
-            p.requires_grad = True 
+        if self.post:
+            for p in self.post_net.parameters():
+                p.requires_grad = True 
+
+    def unfreeze_g_s(self):
+        for p in self.base_net.g_s[1].parameters():
+            p.requires_grad = True      
 
         
 
-    def forward(self, x, mask_pol = "point-based-std", quality = None, post = True, training  = True):
+class PostProcessedNetwork(nn.Module):
+
+    def __init__(self, base_net,
+                N = 64,
+                M = 128,
+                residual = True,
+                post = True,
+                starting_quality = 1, # 10 %
+                    ):
+        super().__init__()
+        self.N = N 
+        self.M = M
+        self.base_net = base_net
+        assert isinstance(self.base_net, ChannelProgresssiveWACNN)
+        self.post = post 
+        if self.post:
+            self.post_net = PostNet(N = self.N, M = self.M) 
+        self.residual = residual
+        self.starting_quality = starting_quality
 
 
+
+
+
+
+    def print_information(self):
+        print("base net",sum(p.numel() for p in self.base_net.parameters()))
+        print("base trainable net",sum(p.numel() for p in self.base_net.parameters() if p.requires_grad is True) )
+        if self.post:
+            print("post net",sum(p.numel() for p in self.post_net.parameters())) 
+            print("post trainable net",sum(p.numel() for p in self.post_net.parameters() if p.requires_grad is True)) 
+            return  sum(p.numel() for p in self.post_net.parameters() if p.requires_grad is True)\
+                + sum(p.numel() for p in self.base_net.parameters() if p.requires_grad is True)
+        else: 
+            return sum(p.numel() for p in self.base_net.parameters() if p.requires_grad is True)
+
+
+    def freeze(self):
+        for p in self.base_net.parameters():
+            p.requires_grad = False
+        if self.post:
+            for p in self.post_net.parameters():
+                p.requires_grad = True 
+    
+    def unfreeze_g_s(self):
+        for p in self.base_net.g_s[1].parameters():
+            p.requires_grad = True 
+
+
+        
+
+    def forward(self, x, mask_pol = "point-based-std", quality = None, post =None, training  = True):
+
+
+
+        post = self.post if post is None else post 
         quality = self.starting_quality if quality is None else quality 
     
-        x_base = self.base_net.forward_single_quality(x, quality = quality, 
+        x_base = self.base_net.forward_single_quality(x, 
+                                                    quality = quality, 
                                                       mask_pol = mask_pol, 
                                                       training =  training)
 
@@ -1036,12 +1103,10 @@ class PostProcessedNetwork(nn.Module):
             return x_base 
         
 
-        x_enh = self.post_net(x_base["x_hat"]) 
+        x_enh = self.post_net(x_base["x_hat"],self.residual) 
+        x_base["x_hat"] = x_enh
 
-        if self.residual:
-            x_base["x_hat"] = x_base["x_hat"] + x_enh
-        else:
-            x_base["x_hat"] = x_enh
+ 
         return x_base  
     
 
@@ -1049,11 +1114,13 @@ class PostProcessedNetwork(nn.Module):
         out_base = self.base_net.compress(x,quality = quality, mask_pol = mask_pol)
         return out_base
     
-    def decompress(self,strings, shape, quality, mask_pol, postprocessing = True):
+    def decompress(self,strings, shape, quality, mask_pol, post = None):
+
+        post = self.post if post is None else post 
         out_dec = self.base_net.decompress(strings, shape,quality = quality, mask_pol = mask_pol)
-        if postprocessing:
-            x_enh = self.post_net(out_dec["x_hat"])
-            out_dec["x_hat"] = out_dec["x_hat"] + x_enh if self.residual else  x_enh
+        if post:
+            x_enh = self.post_net(out_dec["x_hat"],self.residual)
+            out_dec["x_hat"] = x_enh
         
         return out_dec
     
@@ -1061,9 +1128,6 @@ class PostProcessedNetwork(nn.Module):
     def load_state_dict(self, state_dict_base,state_dict_post, strict = False):
         self.base_net.load_state_dict(state_dict_base,strict = strict)
         self.post_net.load_state_dict(state_dict_post,strict = strict)
-
-
-
 
 
 if __name__ == "__main__":

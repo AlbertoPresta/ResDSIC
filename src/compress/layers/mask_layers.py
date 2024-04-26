@@ -60,11 +60,14 @@ class Mask(nn.Module):
             assert scale is not None 
 
             
+            assert scale is not None 
+
+            
             pr = pr*0.1
             pr_bis = 1.0 - pr
-            scale = scale.reshape(bs,-1).to(scale.device) 
-            quantiles = torch.quantile(input_flatten, q=pr_bis, dim=(1))
-            res = torch.where(scale < quantiles.view(-1, 1),torch.tensor(0.0), input_flatten).to(scale.device)
+            scale_flatten = scale.reshape(bs,-1).to(scale.device) 
+            quantiles = torch.quantile(scale_flatten, q=pr_bis, dim=(1))
+            res = torch.where(scale_flatten < quantiles.view(-1, 1),torch.tensor(0.0), scale_flatten).to(scale.device)
             res = res.float()
             return res.reshape(bs,ch,w,h).to(torch.float)
         elif mask_pol == "learnable-mask-gamma":
@@ -285,12 +288,13 @@ class ChannelMask(nn.Module):
             shapes = scale.shape
             bs, ch, w,h = shapes
             assert scale is not None 
-            pr = pr*0.1  
-            pr = 1 -pr 
-            scale = scale.ravel()
-            quantile = torch.quantile(scale, pr)
-            res = scale >= quantile 
-            return res.reshape(bs,ch,w,h).to(torch.float).to(scale.device)
+            pr = pr*0.1
+            pr_bis = 1.0 - pr
+            scale_flatten = scale.reshape(bs,-1).to(scale.device) 
+            quantiles = torch.quantile(scale_flatten, q=pr_bis, dim=(1))
+            res = torch.where(scale_flatten < quantiles.view(-1, 1),torch.tensor(0.0), scale_flatten).to(scale.device)
+            res = res.float()
+            return res.reshape(bs,ch,w,h).to(torch.float)
 
         elif mask_pol == "point-based-double-std":
             if pr == 10:

@@ -85,10 +85,10 @@ def train_one_epoch(model,
         optimizer.zero_grad()
 
         if sampling_training:
-            quality =  random.randint(0, len(list_quality) - 1)
-            lmbda = list_quality[quality]
+            quality_index =  random.randint(0, len(list_quality) - 1)
+            quality = list_quality[quality_index]
             out_net = model(d, quality = quality, mask_pol = mask_pol)
-            out_criterion = criterion(out_net, d, lmbda = lmbda)
+            out_criterion = criterion(out_net, d)
         else:
             
             out_net = model(d, quality = list_quality[0], mask_pol = mask_pol)
@@ -182,7 +182,7 @@ def valid_epoch(epoch, test_dataloader,criterion, model, pr_list = [0.05], mask_
     return loss.avg
 
 
-def test_epoch(epoch, test_dataloader, model, pr_list, mask_pol = None,post = True):
+def test_epoch(epoch, test_dataloader, model, pr_list, mask_pol = None,post = None):
     model.eval()
     device = next(model.parameters()).device
 
@@ -200,7 +200,6 @@ def test_epoch(epoch, test_dataloader, model, pr_list, mask_pol = None,post = Tr
                 out_net = model(d, 
                                 quality = p,
                                 mask_pol = mask_pol, 
-                                post = post if p <= 1 else False,
                                 training = False)
 
                 psnr_im = compute_psnr(d, out_net["x_hat"])
@@ -265,8 +264,7 @@ def compress_with_ac(model,
                 out_dec = model.decompress(data["strings"], 
                                            data["shape"], 
                                            quality = p, 
-                                           mask_pol = mask_pol,
-                                           post = post if p <= 1 else False)
+                                           mask_pol = mask_pol ) #post = post if p <= 1 else False)
                 end = time.time()
 
                 decoded_time = end-start
@@ -412,7 +410,8 @@ def main(argv):
 
     net = models["post"](base_net,
                         N = args.post_N,
-                        M = args.post_M)
+                        M = args.post_M,
+                        post = args.post)
     net = net.to(device)
 
     print("MODELLO INIZIALIZZATO! initialize dataset")
@@ -471,6 +470,13 @@ def main(argv):
     epoch_enc = 0
     mask_pol  = args.mask_pol
     list_quality_training = args.list_quality_training
+
+
+    if args.post:
+        net.freeze() #freeze everything but post 
+    else:
+        net.freeze()
+        net.unfreeze_g_s()
     for epoch in range(last_epoch, args.epochs):
         print("******************************************************")
         print("epoch: ",epoch)
@@ -524,27 +530,29 @@ def main(argv):
                                         filelist, 
                                         device,
                                         epoch = epoch_enc, 
-                                        pr_list =[0,0.01,0.03,0.05,0.07,1], 
+                                        pr_list =[0,0.05,0.075,0.1,0.125], 
                                         post = True, 
                                         mask_pol = mask_pol,
                                         cheating = True)
 
-        bpp_f, psnr_f,_ = compress_with_ac(net,  
-                                        filelist, 
-                                        device,
-                                        epoch = epoch_enc, 
-                                        pr_list =[0,0.01,0.03,0.05,0.07,1,1.1], 
-                                        post = False, 
-                                        mask_pol = mask_pol,
-                                        cheating = True)
+        if args.post:
+            bpp_f, psnr_f,_ = compress_with_ac(net,  
+                                            filelist, 
+                                            device,
+                                            epoch = epoch_enc, 
+                                            pr_list =[0,0.05,0.075,0.1,0.125], 
+                                            post = False, 
+                                            mask_pol = mask_pol,
+                                            cheating = True)
         psnr_res = {}
         bpp_res = {}
 
         bpp_res["our_post"] = bpp
         psnr_res["our_post"] = psnr
 
-        bpp_res["our_f"] = bpp_f
-        psnr_res["our_f"] = psnr_f
+        if args.post:
+            bpp_res["our_f"] = bpp_f
+            psnr_res["our_f"] = psnr_f
 
         #psnr_res["base"] =   [29.20, 30.59,32.26,34.15,35.91,37.72]
         #bpp_res["base"] =  [0.127,0.199,0.309,0.449,0.649,0.895]

@@ -56,11 +56,15 @@ class PostNet(nn.Module):
 
         
 
-    def forward(self, x):
-
-        out_y = self.post_encoder(x)
-        out = self.post_decoder(out_y)
-
-
-        return out
-
+    def forward(self, x, residual):
+        
+        if residual is False:
+            out_y = self.post_encoder(x)
+            out = self.post_decoder(out_y)
+            return out
+        else:
+            out = x 
+            out = self.post_encoder(out)
+            out = self.post_decoder(out) 
+            out += x 
+            return out          
