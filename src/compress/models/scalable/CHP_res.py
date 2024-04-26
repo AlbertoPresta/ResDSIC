@@ -435,7 +435,7 @@ class ChannelProgresssiveWACNN(ProgressiveResWACNN):
             y_hat_slice = ste_round(y_slice - mu) + mu
 
 
-            lrp_support = torch.cat([mean_support,y_hat_slice], dim=1)
+            lrp_support = torch.cat([mean_support,y_hat_slice], dim=1)  ##ddd
             lrp = self.lrp_transforms[idx](lrp_support)
             lrp = 0.5 * torch.tanh(lrp)
             y_hat_slice += lrp               
