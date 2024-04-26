@@ -180,7 +180,7 @@ def parse_args_post(argv):
     parser.add_argument("-n","--num-workers",type=int,default=8,help="Dataloaders threads (default: %(default)s)",)
     #dddd
 
-    parser.add_argument("--list_quality_training", nargs='+', type=int, default = [1])
+    parser.add_argument("--list_quality_training", nargs='+', type=int, default = [0.05,0.075,0.1,0.125])
     parser.add_argument( "--batch_size", type=int, default=16, help="batch_size")
 
     parser.add_argument("--num_images", type=int, default=300000, help="num images") #ddddddd
@@ -197,6 +197,7 @@ def parse_args_post(argv):
     parser.add_argument("--patch-size",type=int,nargs=2,default=(256, 256),help="Size of the patches to be cropped (default: %(default)s)",)
     parser.add_argument("--seed", type=float, help="Set random seed for reproducibility")
     parser.add_argument("--sampling_training", action="store_true", help="Save model to disk")
+    parser.add_argument("--post", action="store_true", help="refine or train postnet")
    
     args = parser.parse_args(argv)
     return args
