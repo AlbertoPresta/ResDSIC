@@ -557,11 +557,11 @@ def main(argv):
         #psnr_res["base"] =   [29.20, 30.59,32.26,34.15,35.91,37.72]
         #bpp_res["base"] =  [0.127,0.199,0.309,0.449,0.649,0.895]
 
-        bpp_res["tri_planet_23"] = tri_planet_23_bpp
-        psnr_res["tri_planet_23"] = tri_planet_23_psnr
+        bpp_res["tri_planet_23"] = tri_planet_23_bpp[:8]
+        psnr_res["tri_planet_23"] = tri_planet_23_psnr[:8]
 
-        bpp_res["tri_planet_22"] = tri_planet_22_bpp
-        psnr_res["tri_planet_22"] = tri_planet_22_psnr
+        #bpp_res["tri_planet_22"] = tri_planet_22_bpp
+        #psnr_res["tri_planet_22"] = tri_planet_22_psnr
 
         plot_rate_distorsion(bpp_res, psnr_res,epoch_enc, eest="compression")
 

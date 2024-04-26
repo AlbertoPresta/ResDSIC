@@ -180,7 +180,7 @@ def parse_args_post(argv):
     parser.add_argument("-n","--num-workers",type=int,default=8,help="Dataloaders threads (default: %(default)s)",)
     #dddd
 
-    parser.add_argument("--list_quality_training", nargs='+', type=int, default = [0.05,0.075,0.1,0.125])
+    parser.add_argument("--list_quality_training", nargs='+', type=int, default = [0.05])
     parser.add_argument( "--batch_size", type=int, default=16, help="batch_size")
 
     parser.add_argument("--num_images", type=int, default=300000, help="num images") #ddddddd
